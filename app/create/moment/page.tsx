@@ -1,8 +1,11 @@
 "use client";
-export const dynamic = "force dynamics"
 
-import { useState, useEffect } from "react";
+export const dynamic = "force-dynamic";
+
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { getSupabaseClient } from "@/lib/supabaseClient";
+
 import Link from "next/link";
 
 
@@ -12,7 +15,7 @@ import DeliveryStylesStep from "@/components/DeliveryStylesStep";
 import PreviewStep from "@/components/PreviewStep";
 import ShareStep from "@/components/ShareStep";
 import type { DeliveryType } from "@/types";
-import { getSupabaseClient } from "@/lib/supabaseClient";
+
 import {
   getTemplatesByCategory,
   type TemplateCategory,
