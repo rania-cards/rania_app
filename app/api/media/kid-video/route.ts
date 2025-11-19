@@ -1,48 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  createHeyGenVideo,
-  getHeyGenVideoStatus,
-} from "@/lib/heygen";
+
+import { resolveElevenLabsVoiceId } from "@/lib/kidVoices";
+import { createKidVideoFromPhoto } from "@/lib/heygen";
+import type { KidVoiceProfileId } from "@/types";
 
 export const runtime = "nodejs";
 
-type KidVideoCreateBody = {
-  scriptText: string;
-  avatarId?: string;
-  voiceId?: string;
-  aspectRatio?: "16:9" | "9:16" | "1:1";
-};
+interface KidVideoRequestBody {
+  text: string;
+  profileId: KidVoiceProfileId;
+  userId: string;
+  momentId?: string;
+  photoAvatarId?: string; // optional, fallback to HEYGEN_DEFAULT_PHOTO_AVATAR_ID
+}
 
+/**
+ * Start a kid video generation job from a photo avatar + text.
+ * Returns { videoId, profileId, audioInlineAllowed }.
+ *
+ * Note: For now we let HeyGen handle its own voice; if you want
+ * a perfect match with ElevenLabs audio, that would require a
+ * different workflow (upload pre-generated audio to HeyGen).
+ */
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const body = (await req.json()) as Partial<KidVideoCreateBody>;
-    const scriptText = body.scriptText?.trim();
+    const body = (await req.json()) as Partial<KidVideoRequestBody>;
+    const { text, profileId, userId, momentId, photoAvatarId } = body;
 
-    if (!scriptText) {
+    if (!text || !profileId || !userId) {
       return NextResponse.json(
-        { error: "Missing 'scriptText' in request body." },
+        { error: "Missing text, profileId, or userId" },
         { status: 400 }
       );
     }
 
-    const result = await createHeyGenVideo({
-      scriptText,
-      avatarId: body.avatarId,
-      voiceId: body.voiceId,
-      aspectRatio: body.aspectRatio,
+    // We still resolve the voice profile to ensure it's valid;
+    // you can later map this to a HeyGen voice_id if needed.
+    resolveElevenLabsVoiceId(profileId as KidVoiceProfileId);
+
+    const video = await createKidVideoFromPhoto({
+      scriptText: text,
+      photoAvatarId: photoAvatarId,
+      aspectRatio: "9:16",
     });
 
-    return NextResponse.json(
-      {
-        videoId: result.videoId,
-        status: "pending" as const,
-      },
-      { status: 200 }
-    );
+    return NextResponse.json({
+      videoId: video.videoId,
+      profileId,
+      momentId: momentId ?? null,
+    });
   } catch (err) {
-    console.error("[RANIA] /api/media/kid-video POST error", err);
+    console.error("[RANIA] /api/media/kid-video error", err);
     return NextResponse.json(
-      { error: "Failed to start kid video generation" },
+      { error: "Failed to create kid video" },
       { status: 500 }
     );
   }

@@ -7,9 +7,28 @@ export type DeliveryType =
   | "kid_voice"
   | "kid_video";
 
-// -------------------------------
-// USERS TABLE
-// -------------------------------
+/**
+ * Known kid voice accent profiles we support for ElevenLabs.
+ */
+export type KidVoiceProfileId =
+  | "kid_en_us" // American English kid
+  | "kid_mtaani" // Nairobi / Sheng / urban
+  | "kid_tz_swahili" // Tanzanian Swahili kid
+  | "kid_somali_en" // Somali-accented English
+  | "kid_kikuyu_en" // Kikuyu-accented kid English
+  | "kid_luo_en"; // Luo-accented kid English
+
+export interface KidVoiceProfile {
+  id: KidVoiceProfileId;
+  label: string;
+  description: string;
+  /**
+   * Name of the environment variable that holds the ElevenLabs voice_id
+   * for this profile (e.g. ELEVENLABS_VOICE_KID_EN_US).
+   */
+  elevenLabsVoiceIdEnvVar: string;
+}
+
 export interface RaniaUser {
   id: string;
   email: string | null;
@@ -21,9 +40,6 @@ export interface RaniaUser {
   created_at: string;
 }
 
-// -------------------------------
-// MOMENTS TABLE
-// -------------------------------
 export interface RaniaMoment {
   id: string;
   user_id: string;
@@ -43,9 +59,6 @@ export interface RaniaMoment {
   created_at: string;
 }
 
-// -------------------------------
-// DISCOUNT OFFERS TABLE
-// -------------------------------
 export interface DiscountOffer {
   id: string;
   user_id: string;
@@ -56,9 +69,6 @@ export interface DiscountOffer {
   created_at: string;
 }
 
-// -------------------------------
-// REFERRALS TABLE
-// -------------------------------
 export interface ReferralRow {
   id: string;
   referrer_id: string;

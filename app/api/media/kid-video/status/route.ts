@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getHeyGenVideoStatus } from "@/lib/heygen";
+import { getKidVideoStatus } from "@/lib/heygen";
 
 export const runtime = "nodejs";
 
+/**
+ * Poll the status of a HeyGen kid video job.
+ * GET /api/media/kid-video/status?videoId=...
+ */
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const { searchParams } = new URL(req.url);
@@ -15,11 +19,11 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const details = await getHeyGenVideoStatus(videoId);
+    const status = await getKidVideoStatus(videoId);
 
-    return NextResponse.json(details, { status: 200 });
+    return NextResponse.json(status);
   } catch (err) {
-    console.error("[RANIA] /api/media/kid-video/status GET error", err);
+    console.error("[RANIA] /api/media/kid-video/status error", err);
     return NextResponse.json(
       { error: "Failed to fetch kid video status" },
       { status: 500 }
