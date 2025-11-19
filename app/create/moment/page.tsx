@@ -1,8 +1,10 @@
 "use client";
+export const dynamic = "force dynamics"
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+
 
 import AboutThemStep from "@/components/AboutThemStep";
 import AiMessageStep from "@/components/AiMessageStep";
