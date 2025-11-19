@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 import type { RaniaMoment } from "@/types";
 
+// Optional, but makes sure this route always runs on the server
+export const runtime = "nodejs";
+
+type ParamsPromise = {
+  params: Promise<{ momentId: string }>;
+};
+
 export async function GET(
   _req: NextRequest,
-  context: { params: { momentId: string } }
+  context: ParamsPromise
 ) {
-  const { momentId } = context.params;
+  // In Next 16, params can be typed as a Promise, so we await it
+  const { momentId } = await context.params;
 
   const supabase = getSupabaseClient();
 
@@ -24,17 +32,19 @@ export async function GET(
     );
   }
 
-  return NextResponse.json({ momentId, moment: data });
+  return NextResponse.json({ momentId, moment: data ?? null });
 }
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: { momentId: string } }
+  context: ParamsPromise
 ) {
-  const { momentId } = context.params;
+  const { momentId } = await context.params;
   const supabase = getSupabaseClient();
 
-  const body = await req.json().catch(() => ({} as Partial<RaniaMoment>));
+  const body = await req.json().catch(
+    () => ({} as Partial<RaniaMoment>)
+  );
 
   const { error } = await supabase
     .from("moments")
