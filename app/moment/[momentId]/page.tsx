@@ -86,6 +86,23 @@ export default async function MomentReceiverPage({ params }: MomentPageProps) {
               {moment.message_text ||
                 "This moment text will appear here. The sender used RANIA to say something special."}
             </p>
+            {moment.media_url && (
+  <div className="mt-4">
+    {moment.delivery_type === "user_voice" || moment.delivery_type === "kid_voice" ? (
+      <audio
+        controls
+        className="w-full mt-2"
+        src={moment.media_url}
+      />
+    ) : (
+      <video
+        controls
+        className="w-full mt-2 rounded-2xl border border-slate-700"
+        src={moment.media_url}
+      />
+    )}
+  </div>
+)}
           </div>
         </div>
 

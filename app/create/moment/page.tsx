@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import MediaUploadPanel from "@/components/MediaUploadPanel";
 
 import AboutThemStep from "@/components/AboutThemStep";
 import AiMessageStep from "@/components/AiMessageStep";
@@ -31,6 +32,7 @@ export default function CreateMomentPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
 
   // ABOUT THEM
   const [receiverName, setReceiverName] = useState("");
@@ -189,15 +191,21 @@ export default function CreateMomentPage() {
   }
 
   // -------- DELIVERY SELECTION --------
-  function handleSelectDelivery(type: DeliveryType) {
-    if (type === "user_video" || type === "kid_video") {
-      // Locked styles → show upgrade modal
-      setLockedChoice(type);
-      setShowUpgradeModal(true);
-      return;
-    }
-    setDeliveryType(type);
+function handleSelectDelivery(type: DeliveryType) {
+  // Lock premium tiles for now (your existing logic)
+  if (type === "kid_video" || type === "user_video") {
+    setLockedChoice(type);
+    setShowUpgradeModal(true);
+    return;
   }
+
+  setDeliveryType(type);
+
+  // If going back to plain text, clear any uploaded media
+  if (type === "text") {
+    setMediaUrl(null);
+  }
+}
 
   // -------- CREATE MOMENT (FREE or PREMIUM) --------
   async function handleCreateMomentOnServer(sendAs: "free" | "premium") {
@@ -209,19 +217,19 @@ export default function CreateMomentPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: effectiveUserId,
-          receiverName,
-          occasion,
-          relationship,
-          tone: vibe,
-          category,
-          templateId: templateId ?? null,
-          deliveryType,
-          messageText: generatedText || userMessage,
-          mediaUrl: null,
-          referrerId: referrerId ?? null,
-          useFreePremiumMoment: sendAs === "premium" ? false : undefined,
-        }),
+  userId: effectiveUserId,
+  receiverName,
+  occasion,
+  relationship,
+  tone: vibe,
+  category,
+  templateId: templateId ?? null,
+  deliveryType,
+  messageText: generatedText || userMessage,
+  mediaUrl: mediaUrl ?? null,
+  referrerId: referrerId ?? null,
+  useFreePremiumMoment: sendAs === "premium" ? false : undefined,
+}),
       });
 
       const data = await res.json();
@@ -343,14 +351,32 @@ export default function CreateMomentPage() {
             />
           )}
 
-          {step === 3 && (
-            <DeliveryStylesStep
-              selected={deliveryType}
-              activeDiscountLabel={activeDiscountLabel}
-              basePrice={premiumPrice}
-              onSelectDelivery={handleSelectDelivery}
-            />
-          )}
+       {step === 3 && (
+  <>
+    <DeliveryStylesStep
+      selected={deliveryType}
+      activeDiscountLabel={activeDiscountLabel}
+      basePrice={premiumPrice}
+      onSelectDelivery={handleSelectDelivery}
+    />
+
+    {deliveryType === "user_voice" && (
+      <MediaUploadPanel
+        kind="audio"
+        userId={effectiveUserId}
+        onUploaded={setMediaUrl}
+      />
+    )}
+
+    {deliveryType === "user_video" && (
+      <MediaUploadPanel
+        kind="video"
+        userId={effectiveUserId}
+        onUploaded={setMediaUrl}
+      />
+    )}
+  </>
+)}
 
           {step === 4 && (
             <PreviewStep

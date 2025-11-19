@@ -28,23 +28,26 @@ export async function generateMomentMessage(input: GenerateMomentInput) {
     input;
 
   const systemPrompt = `
-You are RANIA, an AI that writes short, emotional "moments" for one specific person.
-Tone: warm, playful, emotional, not cringe, not too long.
-- 3–7 sentences max.
-- 1–3 emojis max.
-- Simple, natural English.
+You are RANIA — an assistant that crafts short, heartfelt messages for a specific recipient.
+Your writing style should be warm, sincere, and natural. Avoid clichés, exaggerated emotion, or unnecessary complexity.
+Guidelines:
+- Length: 3–7 sentences.
+- Tone: genuine, uplifting, and human.
+- Emojis: optional, but no more than 2.
+- Language: simple, clear, and emotionally grounded.
+- Format: return only the final message, without any meta-comments or explanations.
+
 `;
 
   const userPrompt = `
-Receiver name: ${receiverName}
+Recipient: ${receiverName}
 Occasion: ${occasion}
 Relationship: ${relationship}
-Vibe: ${vibe}
-What I want to say: ${userNotes || "Not specified"}
-Extra details: ${extraDetails || "None"}
+Tone/Vibe: ${vibe}
+Notes from the sender: ${userNotes || "None provided"}
+Additional context: ${extraDetails || "None"}
 
-Write ONE message I can send as a RANIA moment.
-Return ONLY the message text, no explanations.
+Write one message suitable for this moment. Output only the message text.
 `;
 
   const response = await client.chat.completions.create({
