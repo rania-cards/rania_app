@@ -1,17 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { getSupabaseClient } from "@/lib/supabaseClient";
 
 export default function AuthPage() {
   const supabase = getSupabaseClient();
-  const [email, setEmail] = useState("");
+
+  const [email, setEmail] = useState<string>("");
   const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
     "idle"
   );
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSendMagicLink(e: React.FormEvent) {
+  async function handleSendMagicLink(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setStatus("sending");
     setError(null);
@@ -32,10 +34,11 @@ export default function AuthPage() {
       if (error) {
         setError(error.message);
         setStatus("error");
-      } else {
-        setStatus("sent");
+        return;
       }
-    } catch (err: unknown) {
+
+      setStatus("sent");
+    } catch (err) {
       console.error(err);
       setError("Something went wrong. Please try again.");
       setStatus("error");
@@ -49,8 +52,7 @@ export default function AuthPage() {
           Sign in to RANIA 💛
         </h1>
         <p className="text-sm text-slate-300">
-          Use your email to get a magic link. No passwords, no stress — just
-          moments.
+          Use your email to get a magic link.
         </p>
 
         <form onSubmit={handleSendMagicLink} className="space-y-3">
@@ -81,8 +83,7 @@ export default function AuthPage() {
 
         {status === "sent" && (
           <p className="text-xs text-emerald-300">
-            Check your email for a magic link. Open it on this device and
-            you&apos;ll be signed in automatically.
+            Check your email for a magic link.
           </p>
         )}
 
