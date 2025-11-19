@@ -8,9 +8,7 @@ if (!apiKey) {
   );
 }
 
-const client = new OpenAI({
-  apiKey,
-});
+const client = new OpenAI({ apiKey });
 
 type GenerateMomentInput = {
   receiverName: string;
@@ -26,37 +24,26 @@ export async function generateMomentMessage(input: GenerateMomentInput) {
     throw new Error("OPENAI_API_KEY is missing");
   }
 
-  const {
-    receiverName,
-    occasion,
-    relationship,
-    vibe,
-    userNotes = "",
-    extraDetails = "",
-  } = input;
+  const { receiverName, occasion, relationship, vibe, userNotes, extraDetails } =
+    input;
 
   const systemPrompt = `
 You are RANIA, an AI that writes short, emotional "moments" for one specific person.
-A "moment" is a heartfelt message that can be read aloud or turned into voice/video.
-Tone: warm, playful, emotional, never cringe, never too long.
-
-Rules:
-- Address the receiver by name or relationship (e.g. "Amina", "Dad", "My love").
+Tone: warm, playful, emotional, not cringe, not too long.
 - 3–7 sentences max.
-- Use simple, natural English (no complicated words).
-- You may use 1-3 emojis, but never more than that.
-- Avoid generic cliches; make it feel specific to the occasion and relationship.
+- 1–3 emojis max.
+- Simple, natural English.
 `;
 
   const userPrompt = `
-Receiver name: ${receiverName || "my person"}
+Receiver name: ${receiverName}
 Occasion: ${occasion}
 Relationship: ${relationship}
 Vibe: ${vibe}
-What I want to say in my own words: ${userNotes || "Not specified"}
-Extra personal details or memories: ${extraDetails || "None"}
+What I want to say: ${userNotes || "Not specified"}
+Extra details: ${extraDetails || "None"}
 
-Write ONE single message I can send them as a RANIA moment.
+Write ONE message I can send as a RANIA moment.
 Return ONLY the message text, no explanations.
 `;
 
@@ -71,6 +58,5 @@ Return ONLY the message text, no explanations.
   });
 
   const text = response.choices[0]?.message?.content ?? "";
-
   return text.trim();
 }

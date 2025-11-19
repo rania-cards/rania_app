@@ -1,122 +1,128 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { getSupabaseClient } from "@/lib/supabaseClient";
-
 import Link from "next/link";
-
 
 import AboutThemStep from "@/components/AboutThemStep";
 import AiMessageStep from "@/components/AiMessageStep";
 import DeliveryStylesStep from "@/components/DeliveryStylesStep";
 import PreviewStep from "@/components/PreviewStep";
 import ShareStep from "@/components/ShareStep";
-import type { DeliveryType } from "@/types";
 
+import type { DeliveryType } from "@/types";
+import { getSupabaseClient } from "@/lib/supabaseClient";
 import {
   getTemplatesByCategory,
   type TemplateCategory,
+  type TemplateStyle,
 } from "@/lib/templates";
 
 type WizardStep = 1 | 2 | 3 | 4 | 5;
 
-// Demo fallback user (for dev mode)
+// Demo fallback user so you can test even before auth is perfect
 const DEMO_USER_ID = "demo-user-id-123";
 const DEMO_EMAIL = "demo@rania.local";
 
 export default function CreateMomentPage() {
-  const [step, setStep] = useState<WizardStep>(1);
-
   const supabase = getSupabaseClient();
-  const searchParams = useSearchParams();
 
-  // Auth
+  // STEP & AUTH
+  const [step, setStep] = useState<WizardStep>(1);
+  const [authChecked, setAuthChecked] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [authChecked, setAuthChecked] = useState(false);
 
-  // About them
+  // ABOUT THEM
   const [receiverName, setReceiverName] = useState("");
   const [occasion, setOccasion] = useState("");
   const [relationship, setRelationship] = useState("");
   const [category, setCategory] = useState<TemplateCategory>("love");
+
+  // TEMPLATE
   const [templateId, setTemplateId] = useState<string | null>(null);
 
-  // Message
+  // MESSAGE
   const [vibe, setVibe] = useState("Sweet");
   const [userMessage, setUserMessage] = useState("");
   const [extraDetails, setExtraDetails] = useState("");
   const [generatedText, setGeneratedText] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Delivery
+  // DELIVERY
   const [deliveryType, setDeliveryType] = useState<DeliveryType>("text");
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [lockedChoice, setLockedChoice] = useState<DeliveryType | null>(null);
 
-  // Pricing
+  // PRICING
   const [activeDiscountLabel, setActiveDiscountLabel] = useState<string | null>(
     null
   );
-  const [premiumPrice, setPremiumPrice] = useState(130);
+  const [premiumPrice, setPremiumPrice] = useState<number>(130);
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
   const [sendMode, setSendMode] = useState<"free" | "premium" | null>(null);
 
-  // Share
-  const [momentLink, setMomentLink] = useState<string | null>(null);
+  // REFERRAL
   const [referrerId, setReferrerId] = useState<string | null>(null);
 
-  // Load auth user (if logged in)
+  // SHARE
+  const [momentLink, setMomentLink] = useState<string | null>(null);
+
+  // -------- AUTH: get current user (if logged in) --------
   useEffect(() => {
     async function loadUser() {
-      const { data, error } = await supabase.auth.getUser();
-      if (error) {
-        console.error("Error getting user", error);
+      try {
+        const { data, error } = await supabase.auth.getUser();
+        if (error) {
+          console.error("Error getting user", error);
+        }
+        if (data?.user) {
+          setUserId(data.user.id);
+          setUserEmail(data.user.email ?? null);
+        }
+      } catch (err) {
+        console.error("Auth load error", err);
+      } finally {
+        setAuthChecked(true);
       }
-      if (data?.user) {
-        setUserId(data.user.id);
-        setUserEmail(data.user.email ?? null);
-      }
-      setAuthChecked(true);
     }
 
     loadUser();
   }, [supabase]);
 
-  // Capture referrer from URL (for referral tracking)
+  // -------- REFERRER: read ?referrer= from URL without useSearchParams --------
   useEffect(() => {
-    const ref = searchParams.get("referrer");
-    if (ref) {
-      setReferrerId(ref);
+    if (typeof window === "undefined") return;
+    try {
+      const url = new URL(window.location.href);
+      const ref = url.searchParams.get("referrer");
+      if (ref) setReferrerId(ref);
+    } catch (err) {
+      console.error("Error reading referrer from URL", err);
     }
-  }, [searchParams]);
+  }, []);
 
-  // Template auto-selection based on category
+  // -------- TEMPLATES: choose default template for category --------
+  const templates: TemplateStyle[] = getTemplatesByCategory(category);
+
   useEffect(() => {
-    const list = getTemplatesByCategory(category);
-    if (list.length > 0) {
-      if (!templateId || !list.some((t) => t.id === templateId)) {
-        setTemplateId(list[0].id);
-      }
+    if (templates.length === 0) return;
+    if (!templateId || !templates.some((t) => t.id === templateId)) {
+      setTemplateId(templates[0].id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [category]);
 
-  // Effective user + email (real if logged in, demo otherwise)
-  const EFFECTIVE_USER_ID = userId ?? DEMO_USER_ID;
-  const EFFECTIVE_EMAIL = userEmail ?? DEMO_EMAIL;
+  const selectedTemplate = templates.find((t) => t.id === templateId) ?? null;
 
-  // Templates for current category
-  const templates = getTemplatesByCategory(category);
+  // Effective user identity (real if logged in, demo fallback otherwise)
+  const effectiveUserId = userId ?? DEMO_USER_ID;
+  const effectiveEmail = userEmail ?? DEMO_EMAIL;
 
-  // Discount fetch
+  // -------- DISCOUNT: ask backend for active discount for this user --------
   async function fetchDiscount() {
     try {
       const res = await fetch(
-        `/api/discounts?userId=${encodeURIComponent(EFFECTIVE_USER_ID)}`
+        `/api/discounts?userId=${encodeURIComponent(effectiveUserId)}`
       );
       const data = await res.json();
       if (data.activeDiscount?.price) {
@@ -133,6 +139,7 @@ export default function CreateMomentPage() {
     }
   }
 
+  // -------- NAVIGATION --------
   function goNext() {
     setStep((prev) => (prev < 5 ? ((prev + 1) as WizardStep) : prev));
   }
@@ -141,9 +148,10 @@ export default function CreateMomentPage() {
     setStep((prev) => (prev > 1 ? ((prev - 1) as WizardStep) : prev));
   }
 
+  // -------- AI MESSAGE GENERATION --------
   async function handleGenerateMoment() {
     if (!receiverName || !occasion || !relationship) {
-      alert("Please fill in 'About Them' first (name, occasion, relationship).");
+      alert("Please fill in name, occasion, and relationship first.");
       return;
     }
 
@@ -167,7 +175,7 @@ export default function CreateMomentPage() {
       const data = await res.json();
       if (data?.message) {
         setGeneratedText(data.message);
-        setStep(3); // go to delivery step
+        setStep(3);
       } else {
         console.error("No message returned from API", data);
         alert("Sorry, I couldn't craft the moment. Please try again.");
@@ -180,9 +188,10 @@ export default function CreateMomentPage() {
     }
   }
 
+  // -------- DELIVERY SELECTION --------
   function handleSelectDelivery(type: DeliveryType) {
-    // For now: user_video and kid_video are "locked" and should show upgrade modal
     if (type === "user_video" || type === "kid_video") {
+      // Locked styles → show upgrade modal
       setLockedChoice(type);
       setShowUpgradeModal(true);
       return;
@@ -190,17 +199,17 @@ export default function CreateMomentPage() {
     setDeliveryType(type);
   }
 
+  // -------- CREATE MOMENT (FREE or PREMIUM) --------
   async function handleCreateMomentOnServer(sendAs: "free" | "premium") {
     setSendMode(sendAs);
-    await fetchDiscount(); // ensure we have latest discount
+    await fetchDiscount();
 
     try {
-      // 1) Create the moment on our backend
       const res = await fetch("/api/moments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: EFFECTIVE_USER_ID,
+          userId: effectiveUserId,
           receiverName,
           occasion,
           relationship,
@@ -223,26 +232,26 @@ export default function CreateMomentPage() {
         return;
       }
 
-      const momentId = data.moment.id as string;
+      const momentId: string = data.moment.id;
       const priceFromServer: number =
-        data.pricing?.price ?? (sendAs === "free" ? 0 : premiumPrice ?? 130);
+        data.pricing?.price ?? (sendAs === "free" ? 0 : premiumPrice);
 
       setMomentLink(`/moment/${momentId}`);
       setFinalPrice(priceFromServer);
 
-      // 2) If FREE → go straight to share step
+      // If FREE → straight to Share screen
       if (sendAs === "free" || priceFromServer === 0) {
         setStep(5);
         return;
       }
 
-      // 3) PREMIUM → initialize Paystack and redirect
+      // PREMIUM → initialize Paystack and redirect
       try {
         const payRes = await fetch("/api/paystack/initialize", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            email: EFFECTIVE_EMAIL,
+            email: effectiveEmail,
             amount: priceFromServer,
             reference: `moment-${momentId}`,
           }),
@@ -256,7 +265,6 @@ export default function CreateMomentPage() {
           return;
         }
 
-        // Redirect user to Paystack checkout
         window.location.href = payData.authorizationUrl;
       } catch (err) {
         console.error("Error initializing Paystack", err);
@@ -268,7 +276,7 @@ export default function CreateMomentPage() {
     }
   }
 
-  // While checking auth, show a tiny loader
+  // -------- LOADING STATE WHILE CHECKING AUTH --------
   if (!authChecked) {
     return (
       <div className="px-4 py-10">
@@ -279,6 +287,7 @@ export default function CreateMomentPage() {
     );
   }
 
+  // -------- RENDER WIZARD --------
   return (
     <div className="px-4 py-10">
       <div className="max-w-3xl mx-auto">
@@ -295,12 +304,9 @@ export default function CreateMomentPage() {
           </p>
           {!userId && (
             <p className="mt-2 text-[11px] text-amber-300">
-              You&apos;re in demo mode (not signed in). Moments are still saved,
-              but later you&apos;ll want a real account via{" "}
-              <Link
-                href="/auth"
-                className="underline"
-              >
+              You&apos;re in demo mode (no account). Moments are attached to a
+              temporary ID. Later, create a real account via{" "}
+              <Link href="/auth" className="underline">
                 Sign in
               </Link>
               .
@@ -308,7 +314,6 @@ export default function CreateMomentPage() {
           )}
         </div>
 
-        {/* STEPS */}
         <div className="space-y-6">
           {step === 1 && (
             <AboutThemStep
@@ -333,8 +338,8 @@ export default function CreateMomentPage() {
               onChangeVibe={setVibe}
               onChangeUserMessage={setUserMessage}
               onChangeExtraDetails={setExtraDetails}
-              onGenerate={handleGenerateMoment}
               onChangeGeneratedText={setGeneratedText}
+              onGenerate={handleGenerateMoment}
             />
           )}
 
@@ -372,7 +377,6 @@ export default function CreateMomentPage() {
           )}
         </div>
 
-        {/* NAV BUTTONS */}
         <div className="mt-8 flex justify-between items-center">
           <button
             className="text-xs text-slate-400 hover:text-slate-200"
@@ -394,7 +398,7 @@ export default function CreateMomentPage() {
         </div>
       </div>
 
-      {/* UPGRADE MODAL FOR LOCKED DELIVERY TYPES */}
+      {/* UPGRADE MODAL */}
       {showUpgradeModal && lockedChoice && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-40">
           <div className="max-w-sm w-full mx-4 rounded-2xl bg-slate-900 border border-emerald-500/60 p-5 shadow-2xl">
@@ -410,7 +414,6 @@ export default function CreateMomentPage() {
               <button
                 className="rounded-full bg-emerald-500 text-slate-950 text-sm font-medium py-2 hover:bg-emerald-400"
                 onClick={() => {
-                  // For now we just close and keep selection as text.
                   setShowUpgradeModal(false);
                   setLockedChoice(null);
                   setDeliveryType("text");
