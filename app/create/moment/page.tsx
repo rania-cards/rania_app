@@ -1,467 +1,740 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { getGuestId } from "@/lib/guestId";
+import { useState, useEffect } from "react";
+
+import DeliveryStyleSelector, {
+  DeliveryType,
+} from "@/components/DeliveryStyleSelectors";
 import MediaUploadPanel from "@/components/MediaUploadPanel";
 
-import AboutThemStep from "@/components/AboutThemStep";
-import AiMessageStep from "@/components/AiMessageStep";
-import DeliveryStylesStep from "@/components/DeliveryStylesStep";
-import PreviewStep from "@/components/PreviewStep";
-import ShareStep from "@/components/ShareStep";
+type Step = 1 | 2 | 3;
 
-import type { DeliveryType } from "@/types";
-import { getSupabaseClient } from "@/lib/supabaseClient";
-import {
-  getTemplatesByCategory,
-  type TemplateCategory,
-  type TemplateStyle,
-} from "@/lib/templates";
+type GenerateMessageResponse = {
+  message?: string;
+  error?: string;
+};
 
-type WizardStep = 1 | 2 | 3 | 4 | 5;
+type CreateMomentResponse = {
+  moment?: {
+    id: string;
+    url?: string | null;
+    delivery_type?: string;
+    price_charged?: number | null;
+  };
+  pricing?: {
+    price: number;
+    isPremium: boolean;
+    hasWatermark: boolean;
+  };
+  error?: string;
+};
 
-// Demo fallback user so you can test even before auth is perfect
-const DEMO_USER_ID = "demo-user-id-123";
-const DEMO_EMAIL = "demo@rania.local";
+type SendMode = "free" | "still_premium" | "video_premium";
 
 export default function CreateMomentPage() {
-  const supabase = getSupabaseClient();
+  // Wizard step
+  const [step, setStep] = useState<Step>(1);
+  const totalSteps: Step = 3;
 
-  // STEP & AUTH
-  const [step, setStep] = useState<WizardStep>(1);
-  const [authChecked, setAuthChecked] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [mediaUrl, setMediaUrl] = useState<string | null>(null);
+  // Media (user voice / user video or photo if you switch kind="image")
+  const [voiceFile, setVoiceFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [voiceMediaUrl, setVoiceMediaUrl] = useState<string | null>(null);
+  const [videoMediaUrl, setVideoMediaUrl] = useState<string | null>(null);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
 
-  // ABOUT THEM
+  // Core moment data
   const [receiverName, setReceiverName] = useState("");
   const [occasion, setOccasion] = useState("");
   const [relationship, setRelationship] = useState("");
-  const [category, setCategory] = useState<TemplateCategory>("love");
-
-  // TEMPLATE
-  const [templateId, setTemplateId] = useState<string | null>(null);
-
-  // MESSAGE
-  const [vibe, setVibe] = useState("Sweet");
-  const [userMessage, setUserMessage] = useState("");
-  const [extraDetails, setExtraDetails] = useState("");
-  const [generatedText, setGeneratedText] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-
-  // DELIVERY
+  const [tone, setTone] = useState("Warm");
+  const [rawMessage, setRawMessage] = useState("");
+  const [aiMessage, setAiMessage] = useState("");
   const [deliveryType, setDeliveryType] = useState<DeliveryType>("text");
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [lockedChoice, setLockedChoice] = useState<DeliveryType | null>(null);
 
-  // PRICING
-  const [activeDiscountLabel, setActiveDiscountLabel] = useState<string | null>(
-    null
-  );
-  const [premiumPrice, setPremiumPrice] = useState<number>(130);
+  // UI state
+  const [uiError, setUiError] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+
+  // Send state
+  const [sendMode, setSendMode] = useState<SendMode | null>(null);
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
-  const [sendMode, setSendMode] = useState<"free" | "premium" | null>(null);
+  const [momentUrl, setMomentUrl] = useState<string | null>(null);
 
-  // REFERRAL
-  const [referrerId, setReferrerId] = useState<string | null>(null);
+  // Guest + free quota
+  const [guestId, setGuestId] = useState<string | null>(null);
+  const [freeCount, setFreeCount] = useState<number>(0);
 
-  // SHARE
-  const [momentLink, setMomentLink] = useState<string | null>(null);
+  // Upgrade modal placeholders (not wired yet)
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [intent, setIntent] = useState<"free_blocked" | "premium">("premium");
 
-  // -------- AUTH: get current user (if logged in) --------
   useEffect(() => {
-    async function loadUser() {
-      try {
-        const { data, error } = await supabase.auth.getUser();
-        if (error) {
-          console.error("Error getting user", error);
-        }
-        if (data?.user) {
-          setUserId(data.user.id);
-          setUserEmail(data.user.email ?? null);
-        }
-      } catch (err) {
-        console.error("Auth load error", err);
-      } finally {
-        setAuthChecked(true);
-      }
+    // Clear any old guest ID format (with guest_ prefix)
+    const old = localStorage.getItem("rania_guest_id");
+    if (old && old.startsWith("guest_")) {
+      localStorage.removeItem("rania_guest_id");
     }
 
-    loadUser();
-  }, [supabase]);
+    const id = getGuestId();
+    setGuestId(id);
+    console.log("Current Guest ID:", id);
 
-  // -------- REFERRER: read ?referrer= from URL without useSearchParams --------
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const url = new URL(window.location.href);
-      const ref = url.searchParams.get("referrer");
-      if (ref) setReferrerId(ref);
-    } catch (err) {
-      console.error("Error reading referrer from URL", err);
+    // Load free usage count
+    const freeCountStr = localStorage.getItem("rania_free_count");
+    const parsed = freeCountStr ? parseInt(freeCountStr, 10) : 0;
+    if (!Number.isNaN(parsed)) {
+      setFreeCount(parsed);
     }
   }, []);
 
-  // -------- TEMPLATES: choose default template for category --------
-  const templates: TemplateStyle[] = getTemplatesByCategory(category);
+  const currentMessage = aiMessage || rawMessage;
 
-  useEffect(() => {
-    if (templates.length === 0) return;
-    if (!templateId || !templates.some((t) => t.id === templateId)) {
-      setTemplateId(templates[0].id);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [category]);
+  // ---------------------------
+  // Step navigation
+  // ---------------------------
+  const handleNext = () => {
+    setUiError(null);
 
-  const selectedTemplate = templates.find((t) => t.id === templateId) ?? null;
-
-  // Effective user identity (real if logged in, demo fallback otherwise)
-  const effectiveUserId = userId ?? DEMO_USER_ID;
-  const effectiveEmail = userEmail ?? DEMO_EMAIL;
-
-  // -------- DISCOUNT: ask backend for active discount for this user --------
-  async function fetchDiscount() {
-    try {
-      const res = await fetch(
-        `/api/discounts?userId=${encodeURIComponent(effectiveUserId)}`
-      );
-      const data = await res.json();
-      if (data.activeDiscount?.price) {
-        setPremiumPrice(data.activeDiscount.price);
-        setActiveDiscountLabel(`KES ${data.activeDiscount.price} (Limited offer)`);
-      } else {
-        setPremiumPrice(130);
-        setActiveDiscountLabel(null);
+    if (step === 1) {
+      if (!receiverName.trim() || !occasion.trim() || !relationship.trim()) {
+        setUiError("Please fill in the name, occasion, and relationship.");
+        return;
       }
-    } catch (e) {
-      console.error("Failed to fetch discount", e);
-      setPremiumPrice(130);
-      setActiveDiscountLabel(null);
+      if (!rawMessage.trim()) {
+        setUiError("Please write a short message you'd like to send.");
+        return;
+      }
     }
-  }
 
-  // -------- NAVIGATION --------
-  function goNext() {
-    setStep((prev) => (prev < 5 ? ((prev + 1) as WizardStep) : prev));
-  }
-
-  function goBack() {
-    setStep((prev) => (prev > 1 ? ((prev - 1) as WizardStep) : prev));
-  }
-
-  // -------- AI MESSAGE GENERATION --------
-  async function handleGenerateMoment() {
-    if (!receiverName || !occasion || !relationship) {
-      alert("Please fill in name, occasion, and relationship first.");
+    if (step === 2 && !currentMessage.trim()) {
+      setUiError("Please write or generate a message before continuing.");
       return;
     }
 
-    try {
-      setIsGenerating(true);
-      setGeneratedText("");
+    // When entering Step 3 for a new moment, reset previous send state
+    if (step === 2) {
+      setMomentUrl(null);
+      setSendMode(null);
+      setFinalPrice(null);
+    }
 
+    setStep((prev) => (prev < totalSteps ? ((prev + 1) as Step) : prev));
+  };
+
+  const handleBack = () => {
+    setUiError(null);
+
+    if (step === 3) {
+      setMomentUrl(null);
+      setSendMode(null);
+      setFinalPrice(null);
+    }
+
+    setStep((prev) => (prev > 1 ? ((prev - 1) as Step) : prev));
+  };
+
+  // ---------------------------
+  // AI message generation
+  // ---------------------------
+  const handleGenerateWithAI = async () => {
+    setUiError(null);
+
+    if (!receiverName.trim() || !occasion.trim() || !relationship.trim()) {
+      setUiError("Please fill in the name, occasion, and relationship first.");
+      return;
+    }
+
+    if (!rawMessage.trim()) {
+      setUiError("Write a short message for RANIA to build from.");
+      return;
+    }
+
+    setIsGenerating(true);
+
+    try {
       const res = await fetch("/api/moments/generate-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          receiverName,
-          occasion,
-          relationship,
-          vibe,
-          userMessage,
-          extraDetails,
+          receiverName: receiverName.trim(),
+          occasion: occasion.trim(),
+          relationship: relationship.trim(),
+          tone,
+          userMessage: rawMessage.trim(),
         }),
       });
 
-      const data = await res.json();
-      if (data?.message) {
-        setGeneratedText(data.message);
-        setStep(3);
-      } else {
-        console.error("No message returned from API", data);
-        alert("Sorry, I couldn't craft the moment. Please try again.");
+      const data: GenerateMessageResponse = await res.json();
+
+      if (!res.ok || data?.error) {
+        setUiError(
+          data?.error ??
+            "We couldn’t generate your moment right now. You can still send your own text below."
+        );
+        return;
       }
-    } catch (err) {
-      console.error("Error generating moment", err);
-      alert("Something went wrong while talking to RANIA AI.");
+
+      if (data?.message) {
+        setAiMessage(data.message);
+      }
+    } catch (error) {
+      console.error(error);
+      setUiError("Unexpected error while generating your moment. Please try again.");
     } finally {
       setIsGenerating(false);
     }
-  }
+  };
 
-  // -------- DELIVERY SELECTION --------
-function handleSelectDelivery(type: DeliveryType) {
-  // Lock premium tiles for now (your existing logic)
-  if (type === "kid_video" || type === "user_video") {
-    setLockedChoice(type);
-    setShowUpgradeModal(true);
-    return;
-  }
+  // ---------------------------
+  // Media upload (user voice/video only)
+  // ---------------------------
+  async function handleMediaUpload(file: File, kind: "audio" | "video" | "image") {
+    if (!guestId) {
+      setUiError("Please wait a moment and try again — still preparing your session.");
+      return;
+    }
 
-  setDeliveryType(type);
-
-  // If going back to plain text, clear any uploaded media
-  if (type === "text") {
-    setMediaUrl(null);
-  }
-}
-
-  // -------- CREATE MOMENT (FREE or PREMIUM) --------
-  async function handleCreateMomentOnServer(sendAs: "free" | "premium") {
-    setSendMode(sendAs);
-    await fetchDiscount();
+    setIsUploadingMedia(true);
+    setUiError(null);
 
     try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("userId", guestId);
+      formData.append("kind", kind);
+
+      const res = await fetch("/api/upload-media", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.mediaUrl) {
+        throw new Error(data.error || "Failed to upload media");
+      }
+
+      if (kind === "audio") {
+        setVoiceMediaUrl(data.mediaUrl);
+      } else {
+        setVideoMediaUrl(data.mediaUrl);
+      }
+    } catch (err: any) {
+      console.error(err);
+      setUiError(err.message || "We couldn’t upload your media. Please try again.");
+    } finally {
+      setIsUploadingMedia(false);
+    }
+  }
+
+  // ---------------------------
+  // Send moment (FREE / KES 50 / KES 130)
+  // ---------------------------
+  const handleSend = async (mode: SendMode) => {
+    setUiError(null);
+
+    if (!currentMessage.trim()) {
+      setUiError("Please make sure your message is not empty.");
+      return;
+    }
+
+    // Enforce free limit for text/GIF moments on this device
+    if (mode === "free" && freeCount >= 10) {
+      setUiError(
+        "You've used your 10 free text/GIF moments on this device. To send more or unlock premium moments, you'll soon need to create a RANIA account."
+      );
+      return;
+    }
+
+    if (!guestId) {
+      setUiError("Please wait a moment and try again — still preparing your session.");
+      return;
+    }
+
+    setIsSending(true);
+    setMomentUrl(null);
+    setSendMode(mode);
+
+    // Decide pricing tier string to send to backend
+    let pricingTier: string;
+    if (mode === "free") pricingTier = "FREE";
+    else if (mode === "still_premium") pricingTier = "STILL_50";
+    else pricingTier = "VIDEO_130";
+
+    try {
+      // 1) Create moment record
       const res = await fetch("/api/moments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-  userId: effectiveUserId,
-  receiverName,
-  occasion,
-  relationship,
-  tone: vibe,
-  category,
-  templateId: templateId ?? null,
-  deliveryType,
-  messageText: generatedText || userMessage,
-  mediaUrl: mediaUrl ?? null,
-  referrerId: referrerId ?? null,
-  useFreePremiumMoment: sendAs === "premium" ? false : undefined,
-}),
+          guestId,
+          receiverName: receiverName.trim(),
+          occasion: occasion.trim(),
+          relationship: relationship.trim(),
+          tone,
+          messageText: currentMessage.trim(),
+          deliveryType,
+          isPremium: mode !== "free",
+          pricingTier,          // <-- NEW: tells backend which product
+          voiceMediaUrl,
+          videoMediaUrl,
+        }),
       });
 
-      const data = await res.json();
+      const data: CreateMomentResponse = await res.json();
 
-      if (!data.moment?.id) {
-        console.error("Moment creation failed", data);
-        alert("Sorry, the moment could not be saved. Please try again.");
+      if (!res.ok || data?.error) {
+        setUiError(data?.error || "We couldn't create your moment. Please try again.");
         return;
       }
 
-      const momentId: string = data.moment.id;
-      const priceFromServer: number =
-        data.pricing?.price ?? (sendAs === "free" ? 0 : premiumPrice);
+      const id = data?.moment?.id;
+      const url = data?.moment?.url || (id ? `/moment/${id}` : null);
 
-      setMomentLink(`/moment/${momentId}`);
-      setFinalPrice(priceFromServer);
-
-      // If FREE → straight to Share screen
-      if (sendAs === "free" || priceFromServer === 0) {
-        setStep(5);
-        return;
+      if (data?.pricing?.price != null) {
+        setFinalPrice(data.pricing.price);
+      } else {
+        // Fallback if backend doesn't return pricing yet
+        if (mode === "free") setFinalPrice(0);
+        else if (mode === "still_premium") setFinalPrice(50);
+        else setFinalPrice(130);
       }
 
-      // PREMIUM → initialize Paystack and redirect
-      try {
-        const payRes = await fetch("/api/paystack/initialize", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: effectiveEmail,
-            amount: priceFromServer,
-            reference: `moment-${momentId}`,
-          }),
-        });
+      // 2) If VIDEO premium, trigger backend video rendering (TTS + MP4)
+      if (mode === "video_premium" && id) {
+        try {
+          const renderRes = await fetch("/api/render-video", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ momentId: id }),
+          });
 
-        const payData = await payRes.json();
+          const renderData = await renderRes.json();
 
-        if (!payRes.ok || !payData.authorizationUrl) {
-          console.error("Paystack init failed", payData);
-          alert("Could not start payment. Please try again.");
-          return;
+          if (!renderRes.ok) {
+            console.error("Render error:", renderData);
+            setUiError(
+              renderData.error ||
+                "We created your moment but could not render the video yet. Please try again."
+            );
+          }
+          // videoUrl is stored on the moment; we still use the /moment/[id] link
+        } catch (renderErr: any) {
+          console.error(renderErr);
+          setUiError(
+            renderErr.message ||
+              "We created your moment but hit an issue while rendering the video."
+          );
         }
-
-        window.location.href = payData.authorizationUrl;
-      } catch (err) {
-        console.error("Error initializing Paystack", err);
-        alert("Payment initialization failed. Please try again.");
       }
+
+      if (url) {
+        setMomentUrl(url);
+      }
+
+      // If free send succeeded, increment local free count
+      if (mode === "free") {
+        const newCount = freeCount + 1;
+        setFreeCount(newCount);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("rania_free_count", String(newCount));
+        }
+      }
+
+      setStep(3);
     } catch (err) {
-      console.error("Error creating moment", err);
-      alert("Something went wrong while saving your moment.");
+      console.error(err);
+      setUiError("Something went wrong while sending your moment. Please try again.");
+    } finally {
+      setIsSending(false);
     }
-  }
+  };
 
-  // -------- LOADING STATE WHILE CHECKING AUTH --------
-  if (!authChecked) {
-    return (
-      <div className="px-4 py-10">
-        <div className="max-w-md mx-auto text-center text-slate-300">
-          Checking your RANIA account…
-        </div>
-      </div>
-    );
-  }
-
-  // -------- RENDER WIZARD --------
+  // ---------------------------
+  // RENDER
+  // ---------------------------
   return (
-    <div className="px-4 py-10">
-      <div className="max-w-3xl mx-auto">
-        <div className="mb-6">
-          <p className="text-xs uppercase tracking-[0.2em] text-emerald-300 mb-1">
-            Step {step} of 5
+    <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-black text-slate-50">
+      <main className="max-w-4xl mx-auto px-4 md:px-6 py-10 space-y-10">
+        {/* HEADER */}
+        <section className="space-y-4">
+          <p className="text-xs uppercase tracking-[0.25em] text-emerald-300 flex items-center gap-2">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Step {step} of {totalSteps}
           </p>
-          <h1 className="text-3xl md:text-4xl font-bold mb-2">
-            Let&apos;s create your moment 🎁
+          <h1 className="text-3xl md:text-4xl font-semibold leading-tight">
+            Let&apos;s turn your{" "}
+            <span className="bg-linear-to-r from-emerald-300 via-teal-200 to-sky-300 text-transparent bg-clip-text">
+              feelings into a moment
+            </span>
           </h1>
-          <p className="text-slate-300 text-sm">
-            Answer a few playful questions and RANIA will help you craft a
-            moment they&apos;ll never forget.
+          <p className="text-slate-400 text-sm md:text-base max-w-2xl">
+            We&apos;ll help you craft something that feels like you — whether it&apos;s a text,
+            GIF, or short video.
           </p>
-          {!userId && (
-            <p className="mt-2 text-[11px] text-amber-300">
-              You&apos;re in demo mode (no account). Moments are attached to a
-              temporary ID. Later, create a real account via{" "}
-              <Link href="/auth" className="underline">
-                Sign in
-              </Link>
-              .
-            </p>
-          )}
-        </div>
+        </section>
 
-        <div className="space-y-6">
-          {step === 1 && (
-            <AboutThemStep
-              receiverName={receiverName}
-              occasion={occasion}
-              relationship={relationship}
-              category={category}
-              onChangeReceiverName={setReceiverName}
-              onChangeOccasion={setOccasion}
-              onChangeRelationship={setRelationship}
-              onChangeCategory={setCategory}
-            />
-          )}
-
-          {step === 2 && (
-            <AiMessageStep
-              vibe={vibe}
-              userMessage={userMessage}
-              extraDetails={extraDetails}
-              generatedText={generatedText}
-              isGenerating={isGenerating}
-              onChangeVibe={setVibe}
-              onChangeUserMessage={setUserMessage}
-              onChangeExtraDetails={setExtraDetails}
-              onChangeGeneratedText={setGeneratedText}
-              onGenerate={handleGenerateMoment}
-            />
-          )}
-
-       {step === 3 && (
-  <>
-    <DeliveryStylesStep
-      selected={deliveryType}
-      activeDiscountLabel={activeDiscountLabel}
-      basePrice={premiumPrice}
-      onSelectDelivery={handleSelectDelivery}
-    />
-
-    {deliveryType === "user_voice" && (
-      <MediaUploadPanel
-        kind="audio"
-        userId={effectiveUserId}
-        onUploaded={setMediaUrl}
-      />
-    )}
-
-    {deliveryType === "user_video" && (
-      <MediaUploadPanel
-        kind="video"
-        userId={effectiveUserId}
-        onUploaded={setMediaUrl}
-      />
-    )}
-  </>
-)}
-
-          {step === 4 && (
-            <PreviewStep
-              receiverName={receiverName}
-              messageText={generatedText || userMessage}
-              deliveryType={deliveryType}
-              premiumPrice={premiumPrice}
-              activeDiscountLabel={activeDiscountLabel}
-              templates={templates}
-              selectedTemplateId={templateId}
-              onSelectTemplate={setTemplateId}
-              onSendFree={() => handleCreateMomentOnServer("free")}
-              onSendPremium={() => handleCreateMomentOnServer("premium")}
-            />
-          )}
-
-          {step === 5 && (
-            <ShareStep
-              receiverName={receiverName}
-              momentLink={momentLink}
-              sendMode={sendMode}
-              finalPrice={finalPrice}
-            />
-          )}
-        </div>
-
-        <div className="mt-8 flex justify-between items-center">
-          <button
-            className="text-xs text-slate-400 hover:text-slate-200"
-            disabled={step === 1}
-            onClick={goBack}
-          >
-            ← Back
-          </button>
-          <div className="space-x-2">
-            {step < 4 && (
-              <button
-                className="rounded-full bg-slate-800 px-4 py-2 text-xs text-slate-100 hover:bg-slate-700"
-                onClick={goNext}
-              >
-                Skip for now
-              </button>
-            )}
+        {/* ERROR BANNER */}
+        {uiError && (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 text-sm px-3 py-2">
+            {uiError}
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* UPGRADE MODAL */}
-      {showUpgradeModal && lockedChoice && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-40">
-          <div className="max-w-sm w-full mx-4 rounded-2xl bg-slate-900 border border-emerald-500/60 p-5 shadow-2xl">
-            <h2 className="text-lg font-semibold mb-2">
-              Let&apos;s make this moment unforgettable ✨
-            </h2>
-            <p className="text-sm text-slate-200 mb-3">
-              Video and kid voice delivery unlock deeper emotions 💛
-              <br />
-              Upgrade this moment for only KES 130.
+        {/* STEP 1 — ABOUT THEM & RAW MESSAGE */}
+        {step === 1 && (
+          <section className="space-y-6">
+            <div className="rounded-2xl bg-slate-950/80 border border-slate-800 p-4 md:p-5 space-y-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-emerald-300">
+                Step 1 · About them
+              </p>
+              <h2 className="text-lg font-semibold">Who is this moment for?</h2>
+              <p className="text-xs text-slate-400">
+                Tell us a bit about who you&apos;re sending this to and why. This helps us
+                tailor the tone and details.
+              </p>
+
+              <div className="grid md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-300">Their name</label>
+                  <input
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+                    value={receiverName}
+                    onChange={(e) => setReceiverName(e.target.value)}
+                    placeholder="Amina, Dad, Bestie…"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-300">Occasion</label>
+                  <select
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+                    value={occasion}
+                    onChange={(e) => setOccasion(e.target.value)}
+                  >
+                    <option value="">Pick one</option>
+                    <option value="Birthday">Birthday</option>
+                    <option value="Congratulations">Congratulations</option>
+                    <option value="Appreciation">Appreciation</option>
+                    <option value="Apology">Apology</option>
+                    <option value="Thinking of you">Thinking of you</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs text-slate-300">Relationship</label>
+                  <select
+                    className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-emerald-400"
+                    value={relationship}
+                    onChange={(e) => setRelationship(e.target.value)}
+                  >
+                    <option value="">Select</option>
+                    <option value="Friend">Friend</option>
+                    <option value="Partner">Partner</option>
+                    <option value="Parent">Parent</option>
+                    <option value="Sibling">Sibling</option>
+                    <option value="Family">Family</option>
+                    <option value="Colleague">Colleague</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs text-slate-300">What&apos;s the vibe?</label>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  {["Warm", "Encouraging", "Funny", "Heartfelt", "Short & sweet"].map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setTone(v)}
+                      className={`px-3 py-1 rounded-full border ${
+                        tone === v
+                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                          : "border-slate-700 text-slate-300 hover:border-emerald-400"
+                      }`}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-xs text-slate-300">
+                  What would you like to say?
+                </label>
+                <textarea
+                  className="w-full min-h-[100px] rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-sm text-slate-50 outline-none focus:border-emerald-400"
+                  value={rawMessage}
+                  onChange={(e) => setRawMessage(e.target.value)}
+                  placeholder="Write a few lines from the heart. We'll help you refine it in the next step."
+                />
+                <p className="text-[11px] text-slate-500">
+                  Don&apos;t stress about being perfect — just share what you feel.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  className="flex-1 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
+                >
+                  Next →
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* STEP 2 — REFINE WITH AI */}
+        {step === 2 && (
+          <section className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 md:p-6 space-y-4">
+            <p className="text-xs uppercase tracking-[0.28em] text-sky-300">
+              Step 2 · Let RANIA polish your message
             </p>
-            <div className="flex flex-col gap-2 mt-4">
-              <button
-                className="rounded-full bg-emerald-500 text-slate-950 text-sm font-medium py-2 hover:bg-emerald-400"
-                onClick={() => {
-                  setShowUpgradeModal(false);
-                  setLockedChoice(null);
-                  setDeliveryType("text");
-                  setStep(4);
+            <h2 className="text-lg font-semibold">Review & tweak your moment</h2>
+            <p className="text-[13px] text-slate-400">
+              We&apos;ll use your text + vibe to suggest a warm, natural message that fits the
+              moment. You can always edit it.
+            </p>
+
+            <button
+              type="button"
+              disabled={isGenerating || !rawMessage.trim()}
+              className="inline-flex items-center gap-2 rounded-full bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              onClick={handleGenerateWithAI}
+            >
+              {isGenerating ? "Crafting your moment..." : "Generate with RANIA"}
+            </button>
+
+            <div className="space-y-2">
+              <label className="block text-xs text-slate-300">Your polished moment</label>
+              <textarea
+                className="w-full min-h-[120px] rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-sm text-slate-50 outline-none focus:border-emerald-400"
+                value={aiMessage || rawMessage}
+                onChange={(e) => setAiMessage(e.target.value)}
+                placeholder="Your AI-polished message will appear here. You can still edit it freely."
+              />
+              <p className="text-[11px] text-slate-500">
+                Not feeling it? Hit generate again or tweak the text to sound exactly like you.
+              </p>
+            </div>
+
+            <DeliveryStyleSelector
+              value={deliveryType}
+              onChange={(value) => {
+                setDeliveryType(value);
+              }}
+            />
+
+            {/* User-upload voice (optional, only if they choose user_voice) */}
+            {deliveryType === "user_voice" && (
+              <MediaUploadPanel
+                kind="audio"
+                file={voiceFile}
+                onFileChange={async (file) => {
+                  setVoiceFile(file);
+                  setVoiceMediaUrl(null);
+                  if (file) {
+                    await handleMediaUpload(file, "audio");
+                  }
                 }}
+              />
+            )}
+
+            {/* If you use a PHOTO for video, switch kind="image" here instead of "video" */}
+            {deliveryType === "user_video" && (
+              <MediaUploadPanel
+                kind="video"
+                file={videoFile}
+                onFileChange={async (file) => {
+                  setVideoFile(file);
+                  setVideoMediaUrl(null);
+                  if (file) {
+                    await handleMediaUpload(file, "video");
+                  }
+                }}
+              />
+            )}
+
+            {isUploadingMedia && (
+              <p className="text-[11px] text-slate-400">
+                Uploading your media… please wait a moment.
+              </p>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="flex-1 rounded-full bg-slate-700 px-5 py-2.5 text-sm font-semibold hover:bg-slate-600"
               >
-                Unlock Now — KES 130
+                ← Back
               </button>
               <button
-                className="rounded-full border border-slate-600 text-sm text-slate-100 py-2 hover:bg-slate-800"
-                onClick={() => {
-                  setShowUpgradeModal(false);
-                  setLockedChoice(null);
-                  setDeliveryType("text");
-                }}
+                type="button"
+                onClick={handleNext}
+                className="flex-1 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
               >
-                Keep text only (free)
+                Next →
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </section>
+        )}
+
+        {/* STEP 3 — PREVIEW & SEND */}
+        {step === 3 && (
+          <section className="rounded-2xl bg-slate-900/80 border border-slate-800 p-4 md:p-6 space-y-5">
+            <p className="text-xs uppercase tracking-[0.28em] text-emerald-300">
+              Step 3 · Preview & send
+            </p>
+            <h2 className="text-lg font-semibold">Here&apos;s your moment ✨</h2>
+            <p className="text-[13px] text-slate-400">
+              This is how your moment will look & feel. When you&apos;re happy with it, choose
+              how you want to send it.
+            </p>
+
+            {/* PREVIEW CARD */}
+            <div className="rounded-2xl bg-gradient-to-br from-emerald-500/10 via-sky-500/5 to-pink-500/10 p-4 border border-slate-700">
+              <p className="text-xs text-slate-400 mb-1">
+                To:{" "}
+                <span className="font-semibold text-slate-100">
+                  {receiverName || "Your person"}
+                </span>
+              </p>
+              <p className="text-[11px] text-slate-500 mb-2">
+                Occasion: {occasion || "Special moment"} · Relationship:{" "}
+                {relationship || "Someone special"}
+              </p>
+              <div className="rounded-xl bg-slate-950/80 p-3">
+                <p className="text-[11px] uppercase text-emerald-300 mb-1">
+                  {tone} moment
+                </p>
+                <p className="text-sm text-slate-50 whitespace-pre-line">
+                  {currentMessage || "Your message will appear here."}
+                </p>
+                <p className="mt-3 text-[11px] text-center text-slate-500">
+                  Watermark:{" "}
+                  <span className="text-emerald-300">Made with ❤️ on RANIA</span>
+                </p>
+              </div>
+            </div>
+
+            {/* ALREADY SENT: SHOW SHARE + WHATSAPP */}
+            {momentUrl && (
+              <div className="rounded-lg bg-slate-900/80 border border-slate-700 p-3 text-xs text-slate-300 space-y-3">
+                <p className="font-semibold text-slate-100">
+                  Your moment is ready ✅
+                </p>
+
+                <p>You can share this link with them:</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!momentUrl) return;
+                    const fullUrl =
+                      typeof window !== "undefined"
+                        ? `${window.location.origin}${momentUrl}`
+                        : momentUrl;
+                    void navigator.clipboard.writeText(fullUrl);
+                  }}
+                  className="mt-1 w-full rounded-full bg-slate-800 px-3 py-2 text-xs text-slate-100 hover:bg-slate-700 text-left break-all"
+                >
+                  {momentUrl}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!momentUrl) return;
+                    const fullUrl =
+                      typeof window !== "undefined"
+                        ? `${window.location.origin}${momentUrl}`
+                        : momentUrl;
+
+                    const text = encodeURIComponent(
+                      `I made this for you on RANIA 💛\n\n${fullUrl}`
+                    );
+                    const waUrl = `https://wa.me/?text=${text}`;
+                    if (typeof window !== "undefined") {
+                      window.open(waUrl, "_blank", "noopener,noreferrer");
+                    }
+                  }}
+                  className="w-full rounded-full bg-emerald-500 px-3 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-400 transition"
+                >
+                  Share on WhatsApp
+                </button>
+
+                <p className="text-[11px] text-slate-500">
+                  We&apos;ll add more share options (Instagram, SMS) later. For now,
+                  WhatsApp is the fastest way to drop this in their chats.
+                </p>
+              </div>
+            )}
+
+            {/* SEND BUTTONS WHEN NOT SENT YET */}
+            {!momentUrl && (
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-col md:flex-row gap-3">
+                  <button
+                    type="button"
+                    disabled={isSending}
+                    onClick={() => handleSend("free")}
+                    className="flex-1 rounded-full bg-slate-700 px-5 py-2.5 text-sm font-semibold text-slate-50 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSending && sendMode === "free"
+                      ? "Sending..."
+                      : "Send as text / GIF (Free)"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSending}
+                    onClick={() => handleSend("still_premium")}
+                    className="flex-1 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSending && sendMode === "still_premium"
+                      ? "Processing..."
+                      : "Upgrade still moment — KES 50"}
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isSending}
+                    onClick={() => handleSend("video_premium")}
+                    className="flex-1 rounded-full bg-fuchsia-500/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-fuchsia-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSending && sendMode === "video_premium"
+                      ? "Processing..."
+                      : "Send as video — KES 130"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-500">
+              Free sends include a tiny &quot;Made with ❤️ on RANIA&quot; tag.
+              KES 50 removes the watermark and gives you a premium still/GIF version.
+              KES 130 upgrades you to a short 30s video with your message and voice.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={handleBack}
+                className="flex-1 rounded-full bg-slate-700 px-5 py-2.5 text-sm font-semibold hover:bg-slate-600"
+              >
+                ← Back
+              </button>
+            </div>
+          </section>
+        )}
+      </main>
     </div>
   );
 }

@@ -1,30 +1,38 @@
-// import DashboardSummary from "@/components/DashboardSummary";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { cookies } from "next/headers";
 
-import DashboardSummary from "@/components/DashboardSummary/page";
-import DiscountBanner from "@/components/DiscountBanner/page";
-import ReferralPanel from "@/components/ReferralPanel/page";
+export default async function DashboardPage() {
+  const supabase = createServerComponentClient({ cookies });
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-// import ReferralPanel from "@/components/ReferralPanel";
+  if (!user) {
+    return <div>Please sign in to view your moments.</div>;
+  }
 
-export default function DashboardPage() {
+  const { data: moments } = await supabase
+    .from("moments")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
   return (
-    <div className="px-4 py-10">
-      <div className="max-w-5xl mx-auto space-y-8">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Your RANIA space ✨</h1>
-          <p className="text-slate-300 text-sm">
-            Here you&apos;ll see your moments, referral progress, discounts, and
-            free premium moment balance.
-          </p>
-        </div>
-
-        <DiscountBanner />
-
-        <div className="grid gap-6 lg:grid-cols-[2fr,1.1fr]">
-          <DashboardSummary/>
-          <ReferralPanel />
-        </div>
-      </div>
-    </div>
+    <main className="max-w-3xl mx-auto p-4">
+      <h1 className="text-2xl font-semibold mb-4">Your Moments</h1>
+      {!moments?.length && <p>No moments yet.</p>}
+      <ul className="space-y-3">
+        {moments?.map((m) => (
+          <li key={m.id} className="border rounded-md p-3">
+            <div className="text-sm text-gray-500">{m.occasion} • {m.relationship}</div>
+            <div className="font-medium truncate">{m.message_text}</div>
+            <div className="mt-2 flex gap-3 text-sm">
+              {m.video_url && <a href={m.video_url} target="_blank">View Video</a>}
+              <a href={`/moment/${m.id}`} target="_blank">View Public Link</a>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </main>
   );
 }

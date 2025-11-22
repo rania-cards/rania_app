@@ -1,133 +1,110 @@
+import type { MomentRow } from "./types";
 import Link from "next/link";
-import { getSupabaseClient } from "@/lib/supabaseClient";
-import {
-  getTemplateById,
-  getDefaultTemplateForCategory,
-  type TemplateCategory,
-} from "@/lib/templates";
-import type { RaniaMoment } from "@/types";
 
-interface MomentPageProps {
-  params: { momentId: string };
+type DeliveryType = "text" | "user_voice" | "user_video";
+
+
+type MomentApiResponse = {
+  moment?: MomentRow;
+  error?: string;
+};
+
+async function fetchMoment(momentId: string): Promise<MomentRow | null> {
+  try {
+    const res = await fetch(
+      `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/api/moments/${momentId}`,
+      { cache: "no-store" }
+    );
+
+    const data: MomentApiResponse = await res.json();
+    if (!res.ok || !data?.moment) return null;
+    return data.moment;
+  } catch (e) {
+    console.error("Error fetching moment", e);
+    return null;
+  }
 }
 
-export default async function MomentReceiverPage({ params }: MomentPageProps) {
-  const { momentId } =  await params;
-  const supabase = getSupabaseClient();
+export default async function MomentReceiverPage({
+  params,
+}: {
+  params: { momentId: string };
+}) {
+  const moment = await fetchMoment(params.momentId);
 
-  const { data, error } = await supabase
-    .from("moments")
-    .select("*")
-    .eq("id", momentId)
-    .maybeSingle<RaniaMoment>();
-
-  if (error || !data) {
+  if (!moment) {
     return (
-      <div className="min-h-[70vh] flex items-center justify-center px-4 py-16">
-        <div className="max-w-md w-full text-center space-y-4">
-          <h1 className="text-2xl font-bold text-slate-50">
-            This moment is not available
-          </h1>
-          <p className="text-slate-300 text-sm">
-            It might have been deleted, or the link is incorrect.
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-black text-slate-50">
+        <div className="max-w-md text-center space-y-3">
+          <h1 className="text-xl font-semibold">This moment isn&apos;t available</h1>
+          <p className="text-sm text-slate-400">
+            It may have been deleted or the link is incorrect.
           </p>
           <Link
-            href="/"
-            className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-6 py-2 text-sm font-medium text-slate-950 hover:bg-emerald-400 transition"
+            href="/create/moment"
+            className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-5 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400"
           >
-            Go back to RANIA home
+            Create your own moment
           </Link>
         </div>
       </div>
     );
   }
 
-  const moment = data;
-
-  const category = (moment.category as TemplateCategory) || "others";
-  const template =
-    (moment.template_id && getTemplateById(moment.template_id)) ||
-    getDefaultTemplateForCategory(category);
-
-  const backgroundStyle = {
-    backgroundImage: `radial-gradient(circle at top left, ${template.gradientFrom}, transparent 55%), radial-gradient(circle at bottom right, ${template.gradientTo}, #020617)`,
-  };
-
-  const receiverName = moment.receiver_name || "Someone special";
-
-  const referrerParam = encodeURIComponent(moment.user_id);
+  const deliveryType = moment.delivery_type as DeliveryType;
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4 py-10"
-      style={backgroundStyle}
-    >
-      <div className="max-w-md w-full bg-slate-950/80 border border-slate-800/80 rounded-3xl p-5 shadow-2xl backdrop-blur-md space-y-5">
-        <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/70 border border-slate-700">
-            <span className="text-lg">{template.icon}</span>
-            <span className="text-xs text-slate-200">{template.name}</span>
-          </div>
-          <p className="text-[11px] text-slate-400">
-            Powered by{" "}
-            <span className="font-semibold text-emerald-300">RANIA</span>
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          <p className="text-xs text-slate-300">
-            A moment for{" "}
-            <span className="font-semibold text-slate-50">
-              {receiverName}
+    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-slate-50 flex items-center justify-center px-4 py-10">
+      <div className="w-full max-w-md space-y-5">
+        <div className="rounded-3xl bg-slate-950/80 border border-slate-800 p-5 space-y-3 shadow-xl">
+          <p className="text-xs text-slate-400">
+            Someone created a moment for{" "}
+            <span className="font-semibold text-slate-100">
+              {moment.receiver_name || "you"}
             </span>
           </p>
-          <div className="rounded-2xl bg-slate-900/80 px-3 py-3">
-            <p className="text-sm text-slate-50 whitespace-pre-wrap">
-              {moment.message_text ||
-                "This moment text will appear here. The sender used RANIA to say something special."}
+          <div className="rounded-2xl bg-slate-900/90 p-4 space-y-2 border border-emerald-500/30">
+            <p className="text-[11px] text-slate-400">
+              Occasion:{" "}
+              <span className="text-slate-100">
+                {moment.occasion || "Special moment"}
+              </span>
             </p>
-            {moment.media_url && (
-  <div className="mt-4">
-    {moment.delivery_type === "user_voice" || moment.delivery_type === "kid_voice" ? (
-      <audio
-        controls
-        className="w-full mt-2"
-        src={moment.media_url}
-      />
-    ) : (
-      <video
-        controls
-        className="w-full mt-2 rounded-2xl border border-slate-700"
-        src={moment.media_url}
-      />
-    )}
-  </div>
-)}
+            <p className="text-[11px] text-slate-400">
+              Relationship:{" "}
+              <span className="text-slate-100">
+                {moment.relationship || "Someone who cares about you"}
+              </span>
+            </p>
+            <div className="mt-3 rounded-xl bg-slate-950/80 p-3">
+              <p className="text-[11px] uppercase text-emerald-300 mb-1">
+                Their message
+              </p>
+              <p className="text-sm text-slate-50 whitespace-pre-line">
+                {moment.message_text || ""}
+              </p>
+            </div>
           </div>
+
+          <p className="text-[11px] text-center text-slate-500 mt-2">
+            Made with ❤️ on RANIA
+          </p>
         </div>
 
-        <p className="text-[11px] text-slate-500 text-center">
-          Made with ❤️ on RANIA
-        </p>
-
-        <div className="pt-2 border-t border-slate-800 mt-2 space-y-3">
-          <p className="text-sm text-slate-200 text-center">
-            Loved this moment? Create your own in seconds.
+        {/* CTA: Viral loop */}
+        <div className="rounded-2xl bg-slate-950/80 border border-slate-800 p-4 space-y-2 text-center">
+          <p className="text-sm font-semibold text-slate-100">
+            Want to send your own moment back?
           </p>
-          <div className="flex flex-col sm:flex-row gap-3">
-            <Link
-              href={`/create/moment?referrer=${referrerParam}`}
-              className="flex-1 inline-flex items-center justify-center rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-slate-950 hover:bg-emerald-400 transition"
-            >
-              Create your own moment for FREE 😍
-            </Link>
-            <Link
-              href="/"
-              className="flex-1 inline-flex items-center justify-center rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-100 hover:bg-slate-900 transition"
-            >
-              Explore RANIA
-            </Link>
-          </div>
+          <p className="text-[11px] text-slate-400">
+            Create a free text or GIF moment in under a minute.
+          </p>
+          <Link
+            href="/create/moment"
+            className="inline-flex items-center justify-center rounded-full bg-emerald-500 px-6 py-2 text-xs font-semibold text-slate-950 hover:bg-emerald-400 mt-2"
+          >
+            Create your own moment ✨
+          </Link>
         </div>
       </div>
     </div>

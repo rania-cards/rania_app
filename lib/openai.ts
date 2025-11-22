@@ -1,65 +1,80 @@
+import type { ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import OpenAI from "openai";
 
-const apiKey = process.env.OPENAI_API_KEY;
-
-if (!apiKey) {
-  console.warn(
-    "[RANIA] OPENAI_API_KEY is not set. generateMomentMessage will throw if called."
-  );
+if (!process.env.OPENAI_API_KEY) {
+  throw new Error("Missing OPENAI_API_KEY in environment variables");
 }
 
-const client = new OpenAI({ apiKey });
+export const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-type GenerateMomentInput = {
+/**
+ * The shape of the payload we expect from the client for generating a moment.
+ */
+export type GenerateMomentInput = {
   receiverName: string;
   occasion: string;
   relationship: string;
-  vibe: string;
-  userNotes?: string;
+  tone: string;
+  userMessage: string;
   extraDetails?: string;
 };
 
-export async function generateMomentMessage(input: GenerateMomentInput) {
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is missing");
-  }
+/**
+ * Build the chat messages and call OpenAI to generate a warm, concise message.
+ */
+export async function generateMomentMessage(
+  input: GenerateMomentInput
+): Promise<string> {
+  const {
+    receiverName,
+    occasion,
+    relationship,
+    tone,
+    userMessage,
+    extraDetails,
+  } = input;
 
-  const { receiverName, occasion, relationship, vibe, userNotes, extraDetails } =
-    input;
+  const systemPrompt =
+    "You are RANIA, an assistant that helps people turn their feelings into short, emotionally warm messages called 'moments'. " +
+    "Your job is to take the user’s rough thoughts and rewrite them as a single, natural-sounding message they can send to someone they care about. " +
+    "Write in the first person as if you are the sender. " +
+    "Stay human, gentle, and authentic. Avoid saying that you are an AI or that this is generated. " +
+    "Keep it concise (around 2–5 sentences).";
 
-  const systemPrompt = `
-You are RANIA — an assistant that crafts short, heartfelt messages for a specific recipient.
-Your writing style should be warm, sincere, and natural. Avoid clichés, exaggerated emotion, or unnecessary complexity.
-Guidelines:
-- Length: 3–7 sentences.
-- Tone: genuine, uplifting, and human.
-- Emojis: optional, but no more than 2.
-- Language: simple, clear, and emotionally grounded.
-- Format: return only the final message, without any meta-comments or explanations.
+  const userPrompt = [
+    `I want to create a message for someone special.`,
+    `Recipient name: ${receiverName || "..."}`,
+    `Occasion: ${occasion || "Not specified"}`,
+    `Relationship: ${relationship || "Not specified"}`,
+    `Vibe: ${tone || "Warm"}.`,
+    `What I want to say (raw notes): ${userMessage || "N/A"}.`,
+    extraDetails
+      ? `Extra context or memories to include: ${extraDetails}.`
+      : `No extra context.`,
+    "",
+    "Please write one short, heartfelt message in my voice that I can send them.",
+  ]
+    .join("\n")
+    .trim();
 
-`;
+  const messages: ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
 
-  const userPrompt = `
-Recipient: ${receiverName}
-Occasion: ${occasion}
-Relationship: ${relationship}
-Tone/Vibe: ${vibe}
-Notes from the sender: ${userNotes || "None provided"}
-Additional context: ${extraDetails || "None"}
-
-Write one message suitable for this moment. Output only the message text.
-`;
-
-  const response = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    temperature: 0.85,
-    max_tokens: 220,
+  const response = await openai.chat.completions.create({
+    model: "gpt-4.1-mini", // or 'gpt-4o-mini' if you prefer
+    messages,
+    temperature: 0.8,
+    max_tokens: 200,
   });
 
-  const text = response.choices[0]?.message?.content ?? "";
-  return text.trim();
+  const message = response.choices?.[0]?.message?.content;
+  if (!message || typeof message !== "string") {
+    throw new Error("No message was returned from OpenAI");
+  }
+
+  return message.trim();
 }

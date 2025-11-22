@@ -1,26 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getKidVideoStatus } from "@/lib/heygen";
+import { getHeyGenVideoStatus } from "@/lib/heygen";
 
 export const runtime = "nodejs";
 
-/**
- * Poll the status of a HeyGen kid video job.
- * GET /api/media/kid-video/status?videoId=...
- */
-export async function GET(req: NextRequest): Promise<NextResponse> {
+export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const videoId = searchParams.get("videoId");
 
     if (!videoId) {
       return NextResponse.json(
-        { error: "Missing videoId query parameter" },
+        { error: "Missing videoId" },
         { status: 400 }
       );
     }
 
-    const status = await getKidVideoStatus(videoId);
-
+    const status = await getHeyGenVideoStatus(videoId);
     return NextResponse.json(status);
   } catch (err) {
     console.error("[RANIA] /api/media/kid-video/status error", err);

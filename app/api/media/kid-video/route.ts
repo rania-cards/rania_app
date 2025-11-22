@@ -1,52 +1,70 @@
 import { NextRequest, NextResponse } from "next/server";
-
-import { resolveElevenLabsVoiceId } from "@/lib/kidVoices";
-import { createKidVideoFromPhoto } from "@/lib/heygen";
-import type { KidVoiceProfileId } from "@/types";
+import { createHeyGenVideoFromPhoto } from "@/lib/heygen";
 
 export const runtime = "nodejs";
 
 interface KidVideoRequestBody {
+  /**
+   * Text for the avatar to speak.
+   */
   text: string;
-  profileId: KidVoiceProfileId;
+  /**
+   * Optional: custom photo avatar id.
+   * If not provided, HEYGEN_DEFAULT_PHOTO_AVATAR_ID will be used.
+   */
+  photoAvatarId?: string;
+  /**
+   * RANIA user id (for logging / future linkage).
+   */
   userId: string;
-  momentId?: string;
-  photoAvatarId?: string; // optional, fallback to HEYGEN_DEFAULT_PHOTO_AVATAR_ID
+  /**
+   * Optional moment id (for future linking).
+   */
+  momentId?: string | null;
+}
+
+interface KidVideoSuccessResponse {
+  videoId: string;
+  momentId: string | null;
+}
+
+interface KidVideoErrorResponse {
+  error: string;
 }
 
 /**
- * Start a kid video generation job from a photo avatar + text.
- * Returns { videoId, profileId, audioInlineAllowed }.
+ * Start a HeyGen talking photo video job for RANIA.
+ * 
+ * POST /api/media/kid-video
+ * Body: { text, userId, photoAvatarId?, momentId? }
+ * 
+ * Response: { videoId, momentId }
  *
- * Note: For now we let HeyGen handle its own voice; if you want
- * a perfect match with ElevenLabs audio, that would require a
- * different workflow (upload pre-generated audio to HeyGen).
+ * NOTE: The actual final video URL is fetched via
+ * GET /api/media/kid-video/status?videoId=...
  */
-export async function POST(req: NextRequest): Promise<NextResponse> {
+export async function POST(
+  req: NextRequest
+): Promise<NextResponse<KidVideoSuccessResponse | KidVideoErrorResponse>> {
   try {
     const body = (await req.json()) as Partial<KidVideoRequestBody>;
-    const { text, profileId, userId, momentId, photoAvatarId } = body;
+    const { text, userId, photoAvatarId, momentId } = body;
 
-    if (!text || !profileId || !userId) {
+    if (!text || !userId) {
       return NextResponse.json(
-        { error: "Missing text, profileId, or userId" },
+        { error: "Missing text or userId" },
         { status: 400 }
       );
     }
 
-    // We still resolve the voice profile to ensure it's valid;
-    // you can later map this to a HeyGen voice_id if needed.
-    resolveElevenLabsVoiceId(profileId as KidVoiceProfileId);
-
-    const video = await createKidVideoFromPhoto({
+    const result = await createHeyGenVideoFromPhoto({
       scriptText: text,
-      photoAvatarId: photoAvatarId,
+      photoAvatarId,
       aspectRatio: "9:16",
     });
 
     return NextResponse.json({
-      videoId: video.videoId,
-      profileId,
+      videoId: result.videoId,
       momentId: momentId ?? null,
     });
   } catch (err) {

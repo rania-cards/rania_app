@@ -12,18 +12,26 @@ if (!HEYGEN_API_KEY) {
 
 export type HeyGenVideoStatus = "pending" | "processing" | "completed" | "failed";
 
-export interface CreateKidVideoInput {
+export interface HeyGenCreateInput {
+  /**
+   * Text that the avatar should speak.
+   */
   scriptText: string;
+  /**
+   * HeyGen photo avatar id (talking_photo avatar).
+   */
   photoAvatarId?: string;
-  voiceId?: string;
-  aspectRatio?: "16:9" | "9:16" | "1:1";
+  /**
+   * Optional: 9:16 (vertical), 16:9 (horizontal), or 1:1.
+   */
+  aspectRatio?: "9:16" | "16:9" | "1:1";
 }
 
-export interface CreateKidVideoResult {
+export interface HeyGenCreateResult {
   videoId: string;
 }
 
-export interface KidVideoStatus {
+export interface HeyGenStatusResult {
   videoId: string;
   status: HeyGenVideoStatus;
   videoUrl?: string;
@@ -32,12 +40,11 @@ export interface KidVideoStatus {
 }
 
 /**
- * Create a kid video from a photo avatar.
- * Uses HeyGen's video.generate-style API.
+ * Create a HeyGen talking photo video.
  */
-export async function createKidVideoFromPhoto(
-  input: CreateKidVideoInput
-): Promise<CreateKidVideoResult> {
+export async function createHeyGenVideoFromPhoto(
+  input: HeyGenCreateInput
+): Promise<HeyGenCreateResult> {
   if (!HEYGEN_API_KEY) {
     throw new Error("HEYGEN_API_KEY is not configured.");
   }
@@ -49,10 +56,7 @@ export async function createKidVideoFromPhoto(
     );
   }
 
-  const url = `${HEYGEN_BASE_URL.replace(
-    /\/$/,
-    ""
-  )}/v1/video.generate`;
+  const url = `${HEYGEN_BASE_URL.replace(/\/$/, "")}/v1/video.generate`;
 
   const payload = {
     character: {
@@ -62,7 +66,6 @@ export async function createKidVideoFromPhoto(
     script: {
       type: "text",
       input: input.scriptText,
-      voice_id: input.voiceId ?? undefined,
     },
     aspect_ratio: input.aspectRatio ?? "9:16",
   };
@@ -81,19 +84,21 @@ export async function createKidVideoFromPhoto(
     | null;
 
   if (!res.ok || !json?.data?.video_id) {
-    console.error("[RANIA] HeyGen create video error:", res.status, json);
+    console.error("[RANIA] HeyGen video.generate error:", res.status, json);
     throw new Error(`HeyGen video.generate failed with status ${res.status}`);
   }
 
-  return { videoId: json.data.video_id };
+  return {
+    videoId: json.data.video_id,
+  };
 }
 
 /**
- * Get status + URLs for a kid video job.
+ * Get status and URLs for a HeyGen video job.
  */
-export async function getKidVideoStatus(
+export async function getHeyGenVideoStatus(
   videoId: string
-): Promise<KidVideoStatus> {
+): Promise<HeyGenStatusResult> {
   if (!HEYGEN_API_KEY) {
     throw new Error("HEYGEN_API_KEY is not configured.");
   }

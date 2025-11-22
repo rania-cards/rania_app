@@ -1,66 +1,60 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getSupabaseClient } from "@/lib/supabaseClient";
-import type { RaniaMoment } from "@/types";
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-// Optional, but makes sure this route always runs on the server
-export const runtime = "nodejs";
+type DeliveryType = "text" | "user_voice" | "user_video";
 
-type ParamsPromise = {
-  params: Promise<{ momentId: string }>;
+type MomentRow = {
+  id: string;
+  user_id: string;
+  receiver_name: string | null;
+  occasion: string | null;
+  relationship: string | null;
+  tone: string | null;
+  category: string | null;
+  template_id: string | null;
+  delivery_type: DeliveryType;
+  message_text: string | null;
+  media_url: string | null;
+  is_premium: boolean;
+  price_charged: number;
+  referrer_id: string | null;
+  created_at: string;
 };
 
-export async function GET(
-  _req: NextRequest,
-  context: ParamsPromise
-) {
-  // In Next 16, params can be typed as a Promise, so we await it
-  const { momentId } = await context.params;
-
-  const supabase = getSupabaseClient();
-
-  const { data, error } = await supabase
-    .from("moments")
-    .select("*")
-    .eq("id", momentId)
-    .maybeSingle<RaniaMoment>();
-
-  if (error) {
-    console.error("Error fetching moment", error);
-    return NextResponse.json(
-      { error: "Failed to load moment" },
-      { status: 500 }
-    );
-  }
-
-  return NextResponse.json({ momentId, moment: data ?? null });
+function supabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
 }
 
-export async function PATCH(
-  req: NextRequest,
-  context: ParamsPromise
+export async function GET(
+  _req: Request,
+  { params }: { params: { momentId: string } }
 ) {
-  const { momentId } = await context.params;
-  const supabase = getSupabaseClient();
+  try {
+    const supabase = supabaseAdmin();
 
-  const body = await req.json().catch(
-    () => ({} as Partial<RaniaMoment>)
-  );
+    const { data, error } = await supabase
+      .from("moments")
+      .select("*")
+      .eq("id", params.momentId)
+      .single<MomentRow>();
 
-  const { error } = await supabase
-    .from("moments")
-    .update(body)
-    .eq("id", momentId);
+    if (error || !data) {
+      return NextResponse.json(
+        { error: error?.message ?? "Moment not found" },
+        { status: 404 }
+      );
+    }
 
-  if (error) {
-    console.error("Error updating moment", error);
+    return NextResponse.json({ moment: data });
+  } catch (err) {
+    console.error("Error in /api/moments/[momentId]:", err);
     return NextResponse.json(
-      { error: "Failed to update moment" },
+      { error: "Failed to fetch moment" },
       { status: 500 }
     );
   }
-
-  return NextResponse.json({
-    momentId,
-    message: "Moment updated (stub)",
-  });
-} 
+}
