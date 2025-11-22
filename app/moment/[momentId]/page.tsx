@@ -1,7 +1,6 @@
 import type { MomentRow } from "./types";
 import Link from "next/link";
 
-type DeliveryType = "text" | "user_voice" | "user_video";
 
 
 type MomentApiResponse = {
@@ -34,7 +33,7 @@ export default async function MomentReceiverPage({
 
   if (!moment) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-950 via-slate-900 to-black text-slate-50">
+      <div className="min-h-screen flex items-center justify-center bg-linear-to-b from-slate-950 via-slate-900 to-black text-slate-50">
         <div className="max-w-md text-center space-y-3">
           <h1 className="text-xl font-semibold">This moment isn&apos;t available</h1>
           <p className="text-sm text-slate-400">
@@ -51,10 +50,9 @@ export default async function MomentReceiverPage({
     );
   }
 
-  const deliveryType = moment.delivery_type as DeliveryType;
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-black text-slate-50 flex items-center justify-center px-4 py-10">
+    <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-black text-slate-50 flex items-center justify-center px-4 py-10">
       <div className="w-full max-w-md space-y-5">
         <div className="rounded-3xl bg-slate-950/80 border border-slate-800 p-5 space-y-3 shadow-xl">
           <p className="text-xs text-slate-400">

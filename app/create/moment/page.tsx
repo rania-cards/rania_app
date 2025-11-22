@@ -1,8 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+
+
 "use client";
 
-import { getGuestId } from "@/lib/guestId";
 import { useState, useEffect } from "react";
+import { getGuestId } from "@/lib/guestId";
 
 import DeliveryStyleSelector, {
   DeliveryType,
@@ -31,19 +32,15 @@ type CreateMomentResponse = {
   error?: string;
 };
 
-type SendMode = "free" | "still_premium" | "video_premium";
+type SendMode = "free" | "gif_premium" | "video_premium";
 
 export default function CreateMomentPage() {
   // Wizard step
   const [step, setStep] = useState<Step>(1);
   const totalSteps: Step = 3;
 
-  // Media (user voice / user video or photo if you switch kind="image")
-  const [voiceFile, setVoiceFile] = useState<File | null>(null);
+  // Files (only needed for photo/video, NO TTS audio UI)
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [voiceMediaUrl, setVoiceMediaUrl] = useState<string | null>(null);
-  const [videoMediaUrl, setVideoMediaUrl] = useState<string | null>(null);
-  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
 
   // Core moment data
   const [receiverName, setReceiverName] = useState("");
@@ -64,13 +61,9 @@ export default function CreateMomentPage() {
   const [finalPrice, setFinalPrice] = useState<number | null>(null);
   const [momentUrl, setMomentUrl] = useState<string | null>(null);
 
-  // Guest + free quota
+  // Guest & free usage
   const [guestId, setGuestId] = useState<string | null>(null);
   const [freeCount, setFreeCount] = useState<number>(0);
-
-  // Upgrade modal placeholders (not wired yet)
-  const [showUpgrade, setShowUpgrade] = useState(false);
-  const [intent, setIntent] = useState<"free_blocked" | "premium">("premium");
 
   useEffect(() => {
     // Clear any old guest ID format (with guest_ prefix)
@@ -93,9 +86,6 @@ export default function CreateMomentPage() {
 
   const currentMessage = aiMessage || rawMessage;
 
-  // ---------------------------
-  // Step navigation
-  // ---------------------------
   const handleNext = () => {
     setUiError(null);
 
@@ -115,7 +105,7 @@ export default function CreateMomentPage() {
       return;
     }
 
-    // When entering Step 3 for a new moment, reset previous send state
+    // When entering Step 3 for a *new* moment, reset previous send state
     if (step === 2) {
       setMomentUrl(null);
       setSendMode(null);
@@ -128,6 +118,7 @@ export default function CreateMomentPage() {
   const handleBack = () => {
     setUiError(null);
 
+    // If going back from Step 3 → Step 2, clear any “already sent” state
     if (step === 3) {
       setMomentUrl(null);
       setSendMode(null);
@@ -137,9 +128,6 @@ export default function CreateMomentPage() {
     setStep((prev) => (prev > 1 ? ((prev - 1) as Step) : prev));
   };
 
-  // ---------------------------
-  // AI message generation
-  // ---------------------------
   const handleGenerateWithAI = async () => {
     setUiError(null);
 
@@ -183,57 +171,14 @@ export default function CreateMomentPage() {
       }
     } catch (error) {
       console.error(error);
-      setUiError("Unexpected error while generating your moment. Please try again.");
+      setUiError(
+        "Unexpected error while generating your moment. Please try again."
+      );
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // ---------------------------
-  // Media upload (user voice/video only)
-  // ---------------------------
-  async function handleMediaUpload(file: File, kind: "audio" | "video" | "image") {
-    if (!guestId) {
-      setUiError("Please wait a moment and try again — still preparing your session.");
-      return;
-    }
-
-    setIsUploadingMedia(true);
-    setUiError(null);
-
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("userId", guestId);
-      formData.append("kind", kind);
-
-      const res = await fetch("/api/upload-media", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.mediaUrl) {
-        throw new Error(data.error || "Failed to upload media");
-      }
-
-      if (kind === "audio") {
-        setVoiceMediaUrl(data.mediaUrl);
-      } else {
-        setVideoMediaUrl(data.mediaUrl);
-      }
-    } catch (err: any) {
-      console.error(err);
-      setUiError(err.message || "We couldn’t upload your media. Please try again.");
-    } finally {
-      setIsUploadingMedia(false);
-    }
-  }
-
-  // ---------------------------
-  // Send moment (FREE / KES 50 / KES 130)
-  // ---------------------------
   const handleSend = async (mode: SendMode) => {
     setUiError(null);
 
@@ -242,16 +187,19 @@ export default function CreateMomentPage() {
       return;
     }
 
-    // Enforce free limit for text/GIF moments on this device
+    // Enforce free limit ONLY for free text/GIF sends
     if (mode === "free" && freeCount >= 10) {
       setUiError(
-        "You've used your 10 free text/GIF moments on this device. To send more or unlock premium moments, you'll soon need to create a RANIA account."
+        "You've used your 10 free text/GIF moments on this device. To send more or unlock upgrades, you'll soon need to create a RANIA account."
       );
       return;
     }
 
-    if (!guestId) {
-      setUiError("Please wait a moment and try again — still preparing your session.");
+    // Basic sanity: video premium must have video delivery type
+    if (mode === "video_premium" && deliveryType !== "user_video") {
+      setUiError(
+        "To send a premium video, please choose the 'Your video' delivery style in Step 2."
+      );
       return;
     }
 
@@ -259,14 +207,7 @@ export default function CreateMomentPage() {
     setMomentUrl(null);
     setSendMode(mode);
 
-    // Decide pricing tier string to send to backend
-    let pricingTier: string;
-    if (mode === "free") pricingTier = "FREE";
-    else if (mode === "still_premium") pricingTier = "STILL_50";
-    else pricingTier = "VIDEO_130";
-
     try {
-      // 1) Create moment record
       const res = await fetch("/api/moments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -277,63 +218,34 @@ export default function CreateMomentPage() {
           relationship: relationship.trim(),
           tone,
           messageText: currentMessage.trim(),
-          deliveryType,
-          isPremium: mode !== "free",
-          pricingTier,          // <-- NEW: tells backend which product
-          voiceMediaUrl,
-          videoMediaUrl,
+          deliveryType, // "text" or "user_video"
+          pricingTier: mode, // "free" | "gif_premium" | "video_premium" → BACKEND MUST HANDLE
         }),
       });
 
       const data: CreateMomentResponse = await res.json();
 
       if (!res.ok || data?.error) {
-        setUiError(data?.error || "We couldn't create your moment. Please try again.");
+        setUiError(
+          data?.error || "We couldn't create your moment. Please try again."
+        );
         return;
       }
 
       const id = data?.moment?.id;
       const url = data?.moment?.url || (id ? `/moment/${id}` : null);
 
+      if (url) {
+        setMomentUrl(url);
+      }
+
       if (data?.pricing?.price != null) {
         setFinalPrice(data.pricing.price);
       } else {
-        // Fallback if backend doesn't return pricing yet
+        // Fallback prices if backend doesn't send
         if (mode === "free") setFinalPrice(0);
-        else if (mode === "still_premium") setFinalPrice(50);
-        else setFinalPrice(130);
-      }
-
-      // 2) If VIDEO premium, trigger backend video rendering (TTS + MP4)
-      if (mode === "video_premium" && id) {
-        try {
-          const renderRes = await fetch("/api/render-video", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ momentId: id }),
-          });
-
-          const renderData = await renderRes.json();
-
-          if (!renderRes.ok) {
-            console.error("Render error:", renderData);
-            setUiError(
-              renderData.error ||
-                "We created your moment but could not render the video yet. Please try again."
-            );
-          }
-          // videoUrl is stored on the moment; we still use the /moment/[id] link
-        } catch (renderErr: any) {
-          console.error(renderErr);
-          setUiError(
-            renderErr.message ||
-              "We created your moment but hit an issue while rendering the video."
-          );
-        }
-      }
-
-      if (url) {
-        setMomentUrl(url);
+        if (mode === "gif_premium") setFinalPrice(50);
+        if (mode === "video_premium") setFinalPrice(130);
       }
 
       // If free send succeeded, increment local free count
@@ -348,15 +260,14 @@ export default function CreateMomentPage() {
       setStep(3);
     } catch (err) {
       console.error(err);
-      setUiError("Something went wrong while sending your moment. Please try again.");
+      setUiError(
+        "Something went wrong while sending your moment. Please try again."
+      );
     } finally {
       setIsSending(false);
     }
   };
 
-  // ---------------------------
-  // RENDER
-  // ---------------------------
   return (
     <div className="min-h-screen bg-linear-to-b from-slate-950 via-slate-900 to-black text-slate-50">
       <main className="max-w-4xl mx-auto px-4 md:px-6 py-10 space-y-10">
@@ -373,8 +284,8 @@ export default function CreateMomentPage() {
             </span>
           </h1>
           <p className="text-slate-400 text-sm md:text-base max-w-2xl">
-            We&apos;ll help you craft something that feels like you — whether it&apos;s a text,
-            GIF, or short video.
+            We&apos;ll help you craft something that feels like you — whether
+            it&apos;s a text, GIF, or short video.
           </p>
         </section>
 
@@ -394,8 +305,8 @@ export default function CreateMomentPage() {
               </p>
               <h2 className="text-lg font-semibold">Who is this moment for?</h2>
               <p className="text-xs text-slate-400">
-                Tell us a bit about who you&apos;re sending this to and why. This helps us
-                tailor the tone and details.
+                Tell us a bit about who you&apos;re sending this to and why.
+                This helps us tailor the tone and details.
               </p>
 
               <div className="grid md:grid-cols-3 gap-4">
@@ -444,22 +355,26 @@ export default function CreateMomentPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="block text-xs text-slate-300">What&apos;s the vibe?</label>
+                <label className="text-xs text-slate-300">
+                  What&apos;s the vibe?
+                </label>
                 <div className="flex flex-wrap gap-2 text-xs">
-                  {["Warm", "Encouraging", "Funny", "Heartfelt", "Short & sweet"].map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => setTone(v)}
-                      className={`px-3 py-1 rounded-full border ${
-                        tone === v
-                          ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
-                          : "border-slate-700 text-slate-300 hover:border-emerald-400"
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
+                  {["Warm", "Encouraging", "Funny", "Heartfelt", "Short & sweet"].map(
+                    (v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setTone(v)}
+                        className={`px-3 py-1 rounded-full border ${
+                          tone === v
+                            ? "border-emerald-400 bg-emerald-500/10 text-emerald-200"
+                            : "border-slate-700 text-slate-300 hover:border-emerald-400"
+                        }`}
+                      >
+                        {v}
+                      </button>
+                    )
+                  )}
                 </div>
               </div>
 
@@ -474,7 +389,8 @@ export default function CreateMomentPage() {
                   placeholder="Write a few lines from the heart. We'll help you refine it in the next step."
                 />
                 <p className="text-[11px] text-slate-500">
-                  Don&apos;t stress about being perfect — just share what you feel.
+                  Don&apos;t stress about being perfect — just share what you
+                  feel.
                 </p>
               </div>
 
@@ -499,8 +415,8 @@ export default function CreateMomentPage() {
             </p>
             <h2 className="text-lg font-semibold">Review & tweak your moment</h2>
             <p className="text-[13px] text-slate-400">
-              We&apos;ll use your text + vibe to suggest a warm, natural message that fits the
-              moment. You can always edit it.
+              We&apos;ll use your text + vibe to suggest a warm, natural message
+              that fits the moment. You can always edit it.
             </p>
 
             <button
@@ -513,7 +429,9 @@ export default function CreateMomentPage() {
             </button>
 
             <div className="space-y-2">
-              <label className="block text-xs text-slate-300">Your polished moment</label>
+              <label className="block text-xs text-slate-300">
+                Your polished moment
+              </label>
               <textarea
                 className="w-full min-h-[120px] rounded-lg bg-slate-950 border border-slate-700 px-3 py-3 text-sm text-slate-50 outline-none focus:border-emerald-400"
                 value={aiMessage || rawMessage}
@@ -521,7 +439,8 @@ export default function CreateMomentPage() {
                 placeholder="Your AI-polished message will appear here. You can still edit it freely."
               />
               <p className="text-[11px] text-slate-500">
-                Not feeling it? Hit generate again or tweak the text to sound exactly like you.
+                Not feeling it? Hit generate again or tweak the text to sound
+                exactly like you.
               </p>
             </div>
 
@@ -532,40 +451,12 @@ export default function CreateMomentPage() {
               }}
             />
 
-            {/* User-upload voice (optional, only if they choose user_voice) */}
-            {deliveryType === "user_voice" && (
-              <MediaUploadPanel
-                kind="audio"
-                file={voiceFile}
-                onFileChange={async (file) => {
-                  setVoiceFile(file);
-                  setVoiceMediaUrl(null);
-                  if (file) {
-                    await handleMediaUpload(file, "audio");
-                  }
-                }}
-              />
-            )}
-
-            {/* If you use a PHOTO for video, switch kind="image" here instead of "video" */}
             {deliveryType === "user_video" && (
               <MediaUploadPanel
-                kind="video"
+                kind="video" // you can switch this to "image" later if you want photo-only input
                 file={videoFile}
-                onFileChange={async (file) => {
-                  setVideoFile(file);
-                  setVideoMediaUrl(null);
-                  if (file) {
-                    await handleMediaUpload(file, "video");
-                  }
-                }}
+                onFileChange={setVideoFile}
               />
-            )}
-
-            {isUploadingMedia && (
-              <p className="text-[11px] text-slate-400">
-                Uploading your media… please wait a moment.
-              </p>
             )}
 
             <div className="flex gap-3">
@@ -595,8 +486,8 @@ export default function CreateMomentPage() {
             </p>
             <h2 className="text-lg font-semibold">Here&apos;s your moment ✨</h2>
             <p className="text-[13px] text-slate-400">
-              This is how your moment will look & feel. When you&apos;re happy with it, choose
-              how you want to send it.
+              This is how your moment will look & feel. When you&apos;re happy
+              with it, choose how you want to send it.
             </p>
 
             {/* PREVIEW CARD */}
@@ -620,7 +511,9 @@ export default function CreateMomentPage() {
                 </p>
                 <p className="mt-3 text-[11px] text-center text-slate-500">
                   Watermark:{" "}
-                  <span className="text-emerald-300">Made with ❤️ on RANIA</span>
+                  <span className="text-emerald-300">
+                    Made with ❤️ on RANIA
+                  </span>
                 </p>
               </div>
             </div>
@@ -671,56 +564,64 @@ export default function CreateMomentPage() {
                 </button>
 
                 <p className="text-[11px] text-slate-500">
-                  We&apos;ll add more share options (Instagram, SMS) later. For now,
-                  WhatsApp is the fastest way to drop this in their chats.
+                  We&apos;ll add more share options (Instagram, SMS) later. For
+                  now, WhatsApp is the fastest way to drop this in their chats.
                 </p>
               </div>
             )}
 
-            {/* SEND BUTTONS WHEN NOT SENT YET */}
+            {/* SEND BUTTONS (only if not already sent) */}
             {!momentUrl && (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col md:flex-row gap-3">
-                  <button
-                    type="button"
-                    disabled={isSending}
-                    onClick={() => handleSend("free")}
-                    className="flex-1 rounded-full bg-slate-700 px-5 py-2.5 text-sm font-semibold text-slate-50 hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSending && sendMode === "free"
-                      ? "Sending..."
-                      : "Send as text / GIF (Free)"}
-                  </button>
+              <>
+                {/* TEXT/GIF MODE: FREE + KES 50 UPGRADE */}
+                {deliveryType === "text" && (
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <button
+                      type="button"
+                      disabled={isSending}
+                      onClick={() => handleSend("free")}
+                      className="flex-1 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSending && sendMode === "free"
+                        ? "Sending..."
+                        : "Send as text / GIF (Free)"}
+                    </button>
 
-                  <button
-                    type="button"
-                    disabled={isSending}
-                    onClick={() => handleSend("still_premium")}
-                    className="flex-1 rounded-full bg-emerald-500 px-5 py-2.5 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSending && sendMode === "still_premium"
-                      ? "Processing..."
-                      : "Upgrade still moment — KES 50"}
-                  </button>
+                    <button
+                      type="button"
+                      disabled={isSending}
+                      onClick={() => handleSend("gif_premium")}
+                      className="flex-1 rounded-full bg-indigo-500/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSending && sendMode === "gif_premium"
+                        ? "Processing..."
+                        : "Upgrade text / GIF — KES 50"}
+                    </button>
+                  </div>
+                )}
 
-                  <button
-                    type="button"
-                    disabled={isSending}
-                    onClick={() => handleSend("video_premium")}
-                    className="flex-1 rounded-full bg-fuchsia-500/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-fuchsia-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSending && sendMode === "video_premium"
-                      ? "Processing..."
-                      : "Send as video — KES 130"}
-                  </button>
-                </div>
-              </div>
+                {/* VIDEO MODE: ONLY KES 130 OPTION */}
+                {deliveryType === "user_video" && (
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <button
+                      type="button"
+                      disabled={isSending}
+                      onClick={() => handleSend("video_premium")}
+                      className="flex-1 rounded-full bg-fuchsia-500/90 px-5 py-2.5 text-sm font-semibold text-white hover:bg-fuchsia-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSending && sendMode === "video_premium"
+                        ? "Processing..."
+                        : "Send as video — KES 130"}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
             <p className="text-[11px] text-slate-500">
               Free sends include a tiny &quot;Made with ❤️ on RANIA&quot; tag.
-              KES 50 removes the watermark and gives you a premium still/GIF version.
-              KES 130 upgrades you to a short 30s video with your message and voice.
+              KES 50 upgrades polish your text/GIF moment, and premium video at
+              KES 130 turns it into a full cinematic moment.
             </p>
 
             <div className="flex gap-3">

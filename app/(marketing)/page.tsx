@@ -219,7 +219,7 @@ export default function MarketingHomePage() {
                       </p>
                     </div>
 
-                    <div className="group p-5 rounded-xl bg-gradient-to-br from-purple-500/15 to-purple-500/5 border border-purple-500/30 hover:border-purple-500/70 transition-all duration-300 cursor-pointer transform hover:scale-110 hover:shadow-lg hover:shadow-purple-500/30">
+                    <div className="group p-5 rounded-xl bg-linear-to-br from-purple-500/15 to-purple-500/5 border border-purple-500/30 hover:border-purple-500/70 transition-all duration-300 cursor-pointer transform hover:scale-110 hover:shadow-lg hover:shadow-purple-500/30">
                       <div className="flex items-center gap-2 mb-2">
                         <Video className="w-4 h-4 text-purple-400" />
                         <p className="text-xs font-bold text-purple-300 uppercase">Video Moment</p>
