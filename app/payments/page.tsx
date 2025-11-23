@@ -1,18 +1,20 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Loader, CheckCircle, AlertCircle } from "lucide-react";
 
-export default function PaymentCallbackPage() {
+type Status = "loading" | "success" | "error";
+
+function PaymentCallbackContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
-  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<Status>("loading");
+  const [message, setMessage] = useState<string>("");
 
   useEffect(() => {
-    const verifyPayment = async () => {
+    const verifyPayment = async (): Promise<void> => {
       try {
         const reference = searchParams.get("reference");
 
@@ -22,20 +24,18 @@ export default function PaymentCallbackPage() {
           return;
         }
 
-        // Verify payment with backend
         const response = await fetch("/api/verify-payment", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ reference }),
         });
 
-        const data = await response.json();
+        const data: any = await response.json();
 
         if (response.ok && data.status === "success") {
           setStatus("success");
           setMessage("Payment verified! Your moment is being created...");
 
-          // Redirect to create moment page after 3 seconds
           setTimeout(() => {
             router.push("/create/moment?payment=success&reference=" + reference);
           }, 3000);
@@ -103,5 +103,19 @@ export default function PaymentCallbackPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function PaymentCallbackPage(): React.ReactElement {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-black text-white flex items-center justify-center">
+          <Loader className="w-12 h-12 text-emerald-400 animate-spin" />
+        </div>
+      }
+    >
+      <PaymentCallbackContent />
+    </Suspense>
   );
 }
