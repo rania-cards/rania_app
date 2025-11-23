@@ -544,7 +544,7 @@ function CreateMomentContent() {
               ) : (
                 <>
                   <Sparkles className="w-5 h-5" />
-                  Polish with AI
+                  Polish with Rania
                 </>
               )}
             </button>
