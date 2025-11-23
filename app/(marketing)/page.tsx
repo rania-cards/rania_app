@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { Sparkles, Heart, Zap, Video } from "lucide-react";
 
-export default function MarketingHomePage() {
+export default function HomePage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -80,7 +80,7 @@ export default function MarketingHomePage() {
   }, []);
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="relative min-h-screen overflow-hidden bg-black">
       {/* Animated Background */}
       <div className="fixed inset-0 z-0">
         <canvas
@@ -114,7 +114,7 @@ export default function MarketingHomePage() {
               <div className="space-y-6">
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-black leading-tight">
                   <span className="block text-white">Turn your</span>
-                  <span className="block bg-linear-to-r from-emerald-300 via-cyan-300 to-purple-400 text-transparent bg-clip-text animate-pulse">
+                  <span className="block bg-gradient-to-r from-emerald-300 via-cyan-300 to-purple-400 bg-clip-text text-transparent animate-pulse">
                     feelings
                   </span>
                   <span className="block text-white">into moments</span>
@@ -156,7 +156,7 @@ export default function MarketingHomePage() {
             </div>
 
             {/* Right - 3D Card Preview */}
-            <div className="relative h-96 md:h-full min-h-screen md:min-h-96 hidden lg:flex items-center justify-center">
+            <div className="relative h-96 md:h-full min-h-96 hidden lg:flex items-center justify-center">
               <style>{`
                 @keyframes float {
                   0%, 100% { transform: translateY(0px) rotateX(0deg) rotateY(-15deg); }
@@ -185,21 +185,16 @@ export default function MarketingHomePage() {
               `}</style>
 
               {/* Glowing Background */}
-              <div className="absolute inset-0 bg-linear-to-br from-emerald-500/25 via-purple-500/25 to-pink-500/25 rounded-3xl blur-3xl" />
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/25 via-purple-500/25 to-pink-500/25 rounded-3xl blur-3xl" />
 
               {/* 3D Card */}
               <div className="card-3d relative w-full max-w-sm">
-                <div className="shimmer-bg absolute
-                  -inset-1 bg-linear-to-r from-emerald-600 via-purple-600 to-pink-600 rounded-2xl opacity-75 blur-lg" />
+                <div className="shimmer-bg absolute -inset-1 bg-gradient-to-r from-emerald-600 via-purple-600 to-pink-600 rounded-2xl opacity-75 blur-lg" />
 
-                <div className="glow-card relative bg-slate-950/95 backdrop-blur-xl rounded-2xl p-8 border
-                 border-white/20 space-y-6">
+                <div className="glow-card relative bg-slate-950/95 backdrop-blur-xl rounded-2xl p-8 border border-white/20 space-y-6">
                   {/* Card examples */}
                   <div className="space-y-4">
-                    <div className="group p-5
-                     rounded-xl bg-linear-to-br from-emerald-500/15 to-emerald-500/5 border border-emerald-500/30
-                      hover:border-emerald-500/70 transition-all duration-300 cursor-pointer 
-                       transform hover:scale-110 hover:shadow-lg hover:shadow-emerald-500/30">
+                    <div className="group p-5 rounded-xl bg-gradient-to-br from-emerald-500/15 to-emerald-500/5 border border-emerald-500/30 hover:border-emerald-500/70 transition-all duration-300 cursor-pointer transform hover:scale-110 hover:shadow-lg hover:shadow-emerald-500/30">
                       <div className="flex items-center gap-2 mb-2">
                         <Heart className="w-4 h-4 text-emerald-400" />
                         <p className="text-xs font-bold text-emerald-300 uppercase">Gratitude</p>
@@ -209,7 +204,7 @@ export default function MarketingHomePage() {
                       </p>
                     </div>
 
-                    <div className="group p-5 rounded-xl bg-linear-to-br from-cyan-500/15 to-cyan-500/5 border border-cyan-500/30 hover:border-cyan-500/70 transition-all duration-300 cursor-pointer transform hover:scale-110 hover:shadow-lg hover:shadow-cyan-500/30">
+                    <div className="group p-5 rounded-xl bg-gradient-to-br from-cyan-500/15 to-cyan-500/5 border border-cyan-500/30 hover:border-cyan-500/70 transition-all duration-300 cursor-pointer transform hover:scale-110 hover:shadow-lg hover:shadow-cyan-500/30">
                       <div className="flex items-center gap-2 mb-2">
                         <Zap className="w-4 h-4 text-cyan-400" />
                         <p className="text-xs font-bold text-cyan-300 uppercase">Encouragement</p>
@@ -219,13 +214,13 @@ export default function MarketingHomePage() {
                       </p>
                     </div>
 
-                    <div className="group p-5 rounded-xl bg-linear-to-br from-purple-500/15 to-purple-500/5 border border-purple-500/30 hover:border-purple-500/70 transition-all duration-300 cursor-pointer transform hover:scale-110 hover:shadow-lg hover:shadow-purple-500/30">
+                    <div className="group p-5 rounded-xl bg-gradient-to-br from-purple-500/15 to-purple-500/5 border border-purple-500/30 hover:border-purple-500/70 transition-all duration-300 cursor-pointer transform hover:scale-110 hover:shadow-lg hover:shadow-purple-500/30">
                       <div className="flex items-center gap-2 mb-2">
                         <Video className="w-4 h-4 text-purple-400" />
-                        <p className="text-xs font-bold text-purple-300 uppercase">Video Moment</p>
+                        <p className="text-xs font-bold text-purple-300 uppercase">Moments</p>
                       </div>
                       <p className="text-sm text-white leading-relaxed">
-                        &quot;Your message becomes an 8-12s video they&apos;ll treasure&quot;
+                        &quot;Create beautiful moments they&apos;ll treasure forever&quot;
                       </p>
                     </div>
                   </div>

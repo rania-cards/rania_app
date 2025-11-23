@@ -1,29 +1,21 @@
-"use client";
-
 import Link from "next/link";
 
 export default function Navbar() {
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-md bg-black/30 border-b border-white/10">
-      <div className="max-w-7xl mx-auto px-4 md:px-8 py-4 flex items-center justify-between">
-        {/* Logo */}
+    <header className="border-b border-slate-800 bg-black/40 backdrop-blur fixed top-0 w-full z-50">
+      <div className="max-w-6xl mx-auto flex items-center justify-between px-4 py-3">
         <Link href="/">
-          <div className="text-2xl font-black bg-gradient-to-r from-emerald-400 via-cyan-300 to-purple-400 text-transparent bg-clip-text hover:opacity-80 transition-opacity">
+          <span className="text-lg font-semibold bg-gradient-to-r from-emerald-300 to-sky-300 bg-clip-text text-transparent">
             RANIA
-          </div>
+          </span>
         </Link>
 
-        {/* Create Moment Button */}
-        <Link
-          href="/create/moment"
-          className="group relative px-6 py-2 rounded-full font-bold text-sm overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-emerald-500 to-cyan-500 animate-pulse" />
-          <div className="relative flex items-center gap-2 bg-black px-6 py-2 rounded-full group-hover:bg-opacity-80 transition-all duration-300 group-hover:shadow-lg group-hover:shadow-emerald-500/50">
-            ✨ Create Moment
-          </div>
-        </Link>
+        <nav className="flex items-center gap-6 text-sm text-slate-300">
+          <Link href="/create/moment" className="hover:text-emerald-300 transition">
+            Create Moment
+          </Link>
+        </nav>
       </div>
-    </nav>
+    </header>
   );
 }

@@ -1,7 +1,6 @@
-import { NextResponse } from "next/server";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
-type DeliveryType = "text" | "user_voice" | "user_video";
 
 type MomentRow = {
   id: string;
@@ -10,17 +9,13 @@ type MomentRow = {
   occasion: string | null;
   relationship: string | null;
   tone: string | null;
-  category: string | null;
-  template_id: string | null;
-  delivery_type: DeliveryType;
   message_text: string | null;
-  media_url: string | null;
+  delivery_type: string;
   is_premium: boolean;
-  price_charged: number;
-  referrer_id: string | null;
   created_at: string;
 };
 
+// Server-side Supabase client
 function supabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,30 +25,81 @@ function supabaseAdmin() {
 }
 
 export async function GET(
-  _req: Request,
-  { params }: { params: { momentId: string } }
+  request: NextRequest,
+  { params }: { params: Promise<{ momentId: string }> }
 ) {
   try {
+    // Await params (Next.js 15+ requirement)
+    const { momentId } = await params;
+
+    if (!momentId) {
+      return NextResponse.json(
+        { error: "Missing momentId" },
+        { status: 400 }
+      );
+    }
+
     const supabase = supabaseAdmin();
 
     const { data, error } = await supabase
       .from("moments")
       .select("*")
-      .eq("id", params.momentId)
+      .eq("id", momentId)
       .single<MomentRow>();
 
-    if (error || !data) {
+    if (error) {
+      console.error("Error fetching moment:", error);
       return NextResponse.json(
-        { error: error?.message ?? "Moment not found" },
+        { error: "Moment not found" },
         { status: 404 }
       );
     }
 
     return NextResponse.json({ moment: data });
-  } catch (err) {
-    console.error("Error in /api/moments/[momentId]:", err);
+  } catch (err: any) {
+    console.error("Error in /api/moments/[momentId] GET:", err);
     return NextResponse.json(
       { error: "Failed to fetch moment" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ momentId: string }> }
+) {
+  try {
+    // Await params
+    const { momentId } = await params;
+
+    if (!momentId) {
+      return NextResponse.json(
+        { error: "Missing momentId" },
+        { status: 400 }
+      );
+    }
+
+    const supabase = supabaseAdmin();
+
+    const { error } = await supabase
+      .from("moments")
+      .delete()
+      .eq("id", momentId);
+
+    if (error) {
+      console.error("Error deleting moment:", error);
+      return NextResponse.json(
+        { error: "Failed to delete moment" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    console.error("Error in /api/moments/[momentId] DELETE:", err);
+    return NextResponse.json(
+      { error: "Failed to delete moment" },
       { status: 500 }
     );
   }
