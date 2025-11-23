@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { getGuestId } from "@/lib/guestId";
 import { renderStillImage, StillTemplateId } from "@/lib/stillRenderer";
 import { initPaystackPayment, verifyPaystackPayment } from "@/lib/paystackClients";
@@ -14,6 +14,7 @@ type DeliveryFormat = "text" | "still" | "gif";
 
 export default function CreateMomentPage() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [step, setStep] = useState<Step>(1);
   const [guestId, setGuestId] = useState("");
 
@@ -60,9 +61,31 @@ export default function CreateMomentPage() {
         if (lastReference && pendingData) {
           console.log("=== Checking Pending Payment ===");
           console.log("Reference:", lastReference);
+          console.log("Pending data:", pendingData);
 
           setIsAutoCreating(true);
           setError("");
+
+          // Parse pending data FIRST
+          let rName, occ, rel, tne, message, delivery, template;
+          try {
+            const parsed = JSON.parse(pendingData);
+            rName = parsed.receiverName;
+            occ = parsed.occasion;
+            rel = parsed.relationship;
+            tne = parsed.tone;
+            message = parsed.message;
+            delivery = parsed.delivery;
+            template = parsed.template;
+            console.log("Parsed data:", { rName, occ, rel, tne, message, delivery, template });
+          } catch (parseErr) {
+            console.error("Error parsing pending data:", parseErr);
+            setError("Could not restore form data");
+            sessionStorage.removeItem("lastPaystackReference");
+            sessionStorage.removeItem("pendingDelivery");
+            setIsAutoCreating(false);
+            return;
+          }
 
           // Check the payment status immediately
           try {
@@ -71,10 +94,7 @@ export default function CreateMomentPage() {
             console.log("Verification result:", verified);
 
             if (verified.status === "success") {
-              // Parse pending data
-              const { delivery, message, format, template, receiverName: rName, occasion: occ, relationship: rel, tone: tne } = JSON.parse(pendingData);
-
-              // Set form data
+              // Set form data with parsed values
               setReceiverName(rName);
               setOccasion(occ);
               setRelationship(rel);
@@ -95,7 +115,7 @@ export default function CreateMomentPage() {
 
               // Create the moment
               console.log("Creating moment with delivery:", delivery);
-              await createMoment(delivery, true, delivery === "still" ? 50 : 100, lastReference, id);
+              await createMoment(delivery, true, delivery === "still" ? 50 : 100, lastReference, id, rName, occ, rel, tne, message);
 
               // Clean up session storage
               sessionStorage.removeItem("lastPaystackReference");
@@ -267,23 +287,48 @@ export default function CreateMomentPage() {
     isPremium: boolean,
     priceCharged: number,
     reference: string | null,
-    id?: string
+    id?: string,
+    rName?: string,
+    occ?: string,
+    rel?: string,
+    tne?: string,
+    msg?: string
   ) => {
     try {
       const finalGuestId = id || guestId;
-      console.log("Creating moment...", { delivery, isPremium, priceCharged, guestId: finalGuestId });
+      const finalReceiverName = rName || receiverName;
+      const finalOccasion = occ || occasion;
+      const finalRelationship = rel || relationship;
+      const finalTone = tne || tone;
+      const finalMsg = msg || finalMessage;
+
+      console.log("Creating moment...", { 
+        delivery, 
+        isPremium, 
+        priceCharged, 
+        guestId: finalGuestId,
+        receiverName: finalReceiverName,
+        occasion: finalOccasion,
+        relationship: finalRelationship,
+        tone: finalTone,
+        messageText: finalMsg
+      });
 
       if (!finalGuestId) {
         throw new Error("Guest ID not available");
       }
 
+      if (!finalReceiverName || !finalOccasion || !finalRelationship || !finalMsg) {
+        throw new Error("receiverName, occasion, relationship, and messageText are required.");
+      }
+
       const momentData = {
         guestId: finalGuestId,
-        receiverName: receiverName || "Someone Special",
-        occasion: occasion || "A Special Moment",
-        relationship: relationship || "Friend",
-        tone: tone || "warm",
-        messageText: finalMessage,
+        receiverName: finalReceiverName,
+        occasion: finalOccasion,
+        relationship: finalRelationship,
+        tone: finalTone,
+        messageText: finalMsg,
         deliveryType: delivery,
         isPremium,
         priceCharged,
@@ -331,6 +376,43 @@ export default function CreateMomentPage() {
   };
 
   if (isAutoCreating) {
+    const handleManualCheck = async () => {
+      // Re-trigger the payment check
+      const id = guestId || getGuestId();
+      const lastReference = sessionStorage.getItem("lastPaystackReference");
+      const pendingData = sessionStorage.getItem("pendingDelivery");
+
+      if (lastReference && pendingData) {
+        try {
+          console.log("Manual payment check triggered");
+          const verified = await verifyPaystackPayment(lastReference);
+          console.log("Verification result:", verified);
+
+          if (verified.status === "success") {
+            const parsed = JSON.parse(pendingData);
+            await createMoment(
+              parsed.delivery,
+              true,
+              parsed.delivery === "still" ? 50 : 100,
+              lastReference,
+              id,
+              parsed.receiverName,
+              parsed.occasion,
+              parsed.relationship,
+              parsed.tone,
+              parsed.message
+            );
+            sessionStorage.removeItem("lastPaystackReference");
+            sessionStorage.removeItem("pendingDelivery");
+          } else {
+            setError("Payment not confirmed yet. Please try again.");
+          }
+        } catch (err: any) {
+          setError("Could not verify payment. " + err.message);
+        }
+      }
+    };
+
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-black text-white flex items-center justify-center p-4">
         <div className="text-center space-y-4">
@@ -339,17 +421,27 @@ export default function CreateMomentPage() {
           <p className="text-slate-300">Creating your moment...</p>
           <p className="text-xs text-slate-500">This may take a few moments</p>
           
-          {/* Manual button if stuck on Paystack page */}
-          <button
-            onClick={() => {
-              setIsAutoCreating(false);
-              window.history.back();
-            }}
-            className="mt-4 px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-slate-300 transition flex items-center justify-center gap-2 mx-auto"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Return to RANIA
-          </button>
+          <div className="flex flex-col gap-2">
+            {/* Check payment manually */}
+            <button
+              onClick={handleManualCheck}
+              className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-sm text-white transition"
+            >
+              Check Payment Status
+            </button>
+            
+            {/* Manual back button */}
+            <button
+              onClick={() => {
+                setIsAutoCreating(false);
+                window.history.back();
+              }}
+              className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-sm text-slate-300 transition flex items-center justify-center gap-2 mx-auto"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Return to RANIA
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -371,7 +463,7 @@ export default function CreateMomentPage() {
         {/* Error Banner */}
         {error && (
           <div className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 flex gap-3">
-            <AlertCircle className="w-5 h-5 shrink-0 text-red-400 mt-0.5" />
+            <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400 mt-0.5" />
             <p className="text-red-200 text-sm">{error}</p>
           </div>
         )}
@@ -379,7 +471,7 @@ export default function CreateMomentPage() {
         {/* Success Banner */}
         {successMessage && successMessage !== "Link copied!" && (
           <div className="mb-6 p-4 rounded-lg bg-green-500/20 border border-green-500/50 flex gap-3">
-            <CheckCircle className="w-5 h-5 shrink-0 text-green-400 mt-0.5" />
+            <CheckCircle className="w-5 h-5 flex-shrink-0 text-green-400 mt-0.5" />
             <p className="text-green-200 text-sm">{successMessage}</p>
           </div>
         )}
@@ -474,7 +566,7 @@ export default function CreateMomentPage() {
               ) : (
                 <>
                   <Sparkles className="w-5 h-5" />
-                  Polish with Rania
+                  Polish with AI
                 </>
               )}
             </button>
