@@ -25,7 +25,8 @@ export default function Navbar() {
 
         {/* CTA Button */}
         <Link
-          href="/create/moments"
+          href="/create/moment
+          "
           className="group relative px-6 py-2 rounded-full font-bold text-sm overflow-hidden"
         >
           <div className="absolute inset-0 bg-linear-to-r from-emerald-500 to-cyan-500 animate-pulse" />
