@@ -1,20 +1,16 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
-import { getGuestId } from "@/lib/guestId";
-import {
-  renderStillImage,
-  generateGifMomentPreview,
-  getAllTemplates,
-  getAllGifPacks,
-  StillTemplateId,
-  GifPackId,
-} from "@/lib/momentRenderer";
-import { initPaystackPayment, verifyPaystackPayment } from "@/lib/paystackClients";
 import { v4 as uuidv4 } from "uuid";
+
+import { getGuestId } from "@/lib/guestId";
+import { initPaystackPayment, verifyPaystackPayment } from "@/lib/paystackClients";
+import { GifPackId, GIF_PACKS, getGifPack } from "@/lib/templates";
+
 import {
   Heart,
   Sparkles,
@@ -24,21 +20,239 @@ import {
   Loader,
   AlertCircle,
   CheckCircle,
-  ArrowLeft,
   Zap,
 } from "lucide-react";
+import { JSX } from "react/jsx-runtime";
 
 type Step = 1 | 2 | 3 | 4;
 type DeliveryFormat = "text" | "still" | "gif";
 
-// Supabase client (browser)
+// ---------- STILL TEMPLATES (client-side preview) ----------
+
+export type StillTemplateId =
+  | "sunset"
+  | "midnight"
+  | "golden"
+  | "ocean"
+  | "forest"
+  | "neon"
+  | "rose"
+  | "sky"
+  | "lavender"
+  | "coral"
+  | "emerald"
+  | "slate";
+
+type TextStyle = {
+  fontSize: number;
+  fontWeight: "400" | "600" | "700" | "800";
+  color: string;
+  shadowColor: string;
+  shadowBlur: number;
+};
+
+type StillTemplate = {
+  id: StillTemplateId;
+  name: string;
+  imageUrl: string;
+  gradient?: string;
+  textStyle: TextStyle;
+};
+
+const STILL_TEMPLATES: Record<StillTemplateId, StillTemplate> = {
+  sunset: {
+    id: "sunset",
+    name: "🌅 Warm Sunset",
+    imageUrl:
+      "https://images.unsplash.com/photo-1495521821757-a1efb6729352?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#ffffff",
+      shadowColor: "rgba(139, 69, 19, 0.6)",
+      shadowBlur: 20,
+    },
+  },
+  midnight: {
+    id: "midnight",
+    name: "🌙 Deep Midnight",
+    imageUrl:
+      "https://images.unsplash.com/photo-1419242902214-272b3f66ee7a?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#e0f2ff",
+      shadowColor: "rgba(0, 20, 60, 0.8)",
+      shadowBlur: 25,
+    },
+  },
+  golden: {
+    id: "golden",
+    name: "✨ Golden Hour",
+    imageUrl:
+      "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#fef3c7",
+      shadowColor: "rgba(78, 22, 9, 0.7)",
+      shadowBlur: 20,
+    },
+  },
+  ocean: {
+    id: "ocean",
+    name: "🌊 Ocean Blue",
+    imageUrl:
+      "https://images.unsplash.com/photo-1505142468610-359e7d316be0?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#ffffff",
+      shadowColor: "rgba(0, 30, 60, 0.7)",
+      shadowBlur: 25,
+    },
+  },
+  forest: {
+    id: "forest",
+    name: "🌲 Forest Green",
+    imageUrl:
+      "https://images.unsplash.com/photo-1441974231531-c6227db76b6e?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#ecfdf5",
+      shadowColor: "rgba(5, 46, 22, 0.8)",
+      shadowBlur: 25,
+    },
+  },
+  neon: {
+    id: "neon",
+    name: "💜 Neon Nights",
+    imageUrl:
+      "https://images.unsplash.com/photo-1514306688772-aadfc4d4b5f3?w=1080&h=1920&fit=crop&q=85",
+    gradient:
+      "linear-gradient(135deg, rgba(139, 92, 246, 0.3), rgba(236, 72, 153, 0.3))",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "800",
+      color: "#fbbf24",
+      shadowColor: "rgba(139, 92, 246, 0.8)",
+      shadowBlur: 30,
+    },
+  },
+  rose: {
+    id: "rose",
+    name: "🌹 Rose Pink",
+    imageUrl:
+      "https://images.unsplash.com/photo-1489749798305-4fea3ba63d60?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#fce7f3",
+      shadowColor: "rgba(190, 24, 93, 0.7)",
+      shadowBlur: 22,
+    },
+  },
+  sky: {
+    id: "sky",
+    name: "☁️ Clear Sky",
+    imageUrl:
+      "https://images.unsplash.com/photo-1464207687429-7505649dae38?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#ffffff",
+      shadowColor: "rgba(30, 58, 138, 0.6)",
+      shadowBlur: 20,
+    },
+  },
+  lavender: {
+    id: "lavender",
+    name: "💜 Lavender Dream",
+    imageUrl:
+      "https://images.unsplash.com/photo-1518066000714-58c45f1b773c?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#f5f3ff",
+      shadowColor: "rgba(88, 28, 135, 0.7)",
+      shadowBlur: 23,
+    },
+  },
+  coral: {
+    id: "coral",
+    name: "🪸 Coral Reef",
+    imageUrl:
+      "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#ffffff",
+      shadowColor: "rgba(127, 29, 29, 0.7)",
+      shadowBlur: 24,
+    },
+  },
+  emerald: {
+    id: "emerald",
+    name: "💚 Emerald Glow",
+    imageUrl:
+      "https://images.unsplash.com/photo-1511379938547-c1f69b13d835?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#ecfdf5",
+      shadowColor: "rgba(4, 120, 87, 0.8)",
+      shadowBlur: 25,
+    },
+  },
+  slate: {
+    id: "slate",
+    name: "🎭 Dark Slate",
+    imageUrl:
+      "https://images.unsplash.com/photo-1518895949257-7621c3c786d7?w=1080&h=1920&fit=crop&q=85",
+    textStyle: {
+      fontSize: 56,
+      fontWeight: "700",
+      color: "#f1f5f9",
+      shadowColor: "rgba(15, 23, 42, 0.9)",
+      shadowBlur: 22,
+    },
+  },
+};
+
+const getAllTemplates = () => Object.values(STILL_TEMPLATES);
+
+// ---------- SUPABASE CLIENT ----------
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "",
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ""
 );
 
+// ======================================================================
+// MAIN COMPONENT
+// ======================================================================
+
 function CreateMomentContent() {
   const router = useRouter();
+
+  // Load Paystack inline script on mount
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.src = "https://js.paystack.co/v1/inline.js";
+    script.async = true;
+    script.onload = () => {
+      console.log("Paystack inline script loaded");
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      if (script && script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    };
+  }, []);
+
   const [step, setStep] = useState<Step>(1);
   const [guestId, setGuestId] = useState("");
 
@@ -57,7 +271,9 @@ function CreateMomentContent() {
 
   // Delivery format & templates
   const [selectedFormat, setSelectedFormat] = useState<DeliveryFormat | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<StillTemplateId | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<StillTemplateId | null>(
+    null
+  );
   const [selectedGifPack, setSelectedGifPack] = useState<GifPackId | null>(null);
 
   // UI State
@@ -65,49 +281,56 @@ function CreateMomentContent() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
-  const [isAutoCreating, setIsAutoCreating] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [momentId, setMomentId] = useState<string | null>(null);
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
 
-  // Initialize
+  // Init guestId
   useEffect(() => {
     const id = getGuestId();
     setGuestId(id);
-    checkPendingPayment(id);
   }, []);
 
-  const checkPendingPayment = async (id: string) => {
-    try {
-      const lastReference = sessionStorage.getItem("lastPaystackReference");
-      const pendingData = sessionStorage.getItem("pendingDelivery");
+  // ---------- Helpers: DataURL / Upload ----------
 
-      if (lastReference && pendingData) {
-        setIsAutoCreating(true);
-        const verified = await verifyPaystackPayment(lastReference);
-
-        if (verified.status === "success") {
-          const parsed = JSON.parse(pendingData);
-          await createMoment(
-            parsed.delivery,
-            true,
-            parsed.delivery === "still" ? 50 : 100,
-            lastReference,
-            id,
-            parsed
-          );
-          sessionStorage.removeItem("lastPaystackReference");
-          sessionStorage.removeItem("pendingDelivery");
-        } else if (verified.status === "pending") {
-          setError("Payment is being processed...");
-          setTimeout(() => checkPendingPayment(id), 3000);
-        }
-      }
-    } catch (err: any) {
-      console.error("Payment check error:", err);
-      setIsAutoCreating(false);
-    }
+  const dataUrlToBlob = (dataUrl: string) => {
+    const parts = dataUrl.split(",");
+    const meta = parts[0];
+    const base64 = parts[1] || "";
+    const mime = meta.match(/:(.*?);/)?.[1] ?? "image/png";
+    const binary = atob(base64);
+    const len = binary.length;
+    const buf = new Uint8Array(len);
+    for (let i = 0; i < len; i++) buf[i] = binary.charCodeAt(i);
+    return new Blob([buf], { type: mime });
   };
+
+  const uploadDataUrlToSupabase = async (
+    dataUrl: string,
+    filenamePrefix = "moment"
+  ) => {
+    const blob = dataUrlToBlob(dataUrl);
+    const ext =
+      blob.type === "image/png"
+        ? "png"
+        : blob.type === "image/gif"
+        ? "gif"
+        : blob.type === "image/jpeg"
+        ? "jpg"
+        : "bin";
+
+    const fileName = `${filenamePrefix}-${uuidv4()}.${ext}`;
+    const { data, error: uploadErr } = await supabase.storage
+      .from("moments-media")
+      .upload(fileName, blob as any, { upsert: true });
+
+    if (uploadErr) throw uploadErr;
+
+    return supabase.storage.from("moments-media").getPublicUrl(data.path).data
+      .publicUrl;
+  };
+
+  // ---------- AI Polish ----------
 
   const handleGenerateMessage = async () => {
     try {
@@ -119,21 +342,21 @@ function CreateMomentContent() {
 
       setIsGenerating(true);
 
-      const response = await fetch("/api/moments/generate-message", {
+      const res = await fetch("/api/moments/generate-message", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           receiverName: receiverName || "Someone Special",
           occasion: occasion || "Just Because",
           relationship: relationship || "Friend",
-          tone: tone || "warm",
-          gender: gender, // pass gender to AI prompt
-          userMessage: userMessage,
+          tone,
+          gender,
+          userMessage,
         }),
       });
 
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to generate");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to generate");
 
       setFinalMessage(data.message);
       setStep(2);
@@ -144,402 +367,511 @@ function CreateMomentContent() {
     }
   };
 
+  // ---------- Still preview renderer ----------
+
+  const wrapText = (
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number
+  ): string[] => {
+    const words = text.split(" ");
+    const lines: string[] = [];
+    let currentLine = "";
+
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word;
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = word;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) lines.push(currentLine);
+    return lines;
+  };
+
+  const renderStillImage = async (
+    templateId: StillTemplateId,
+    message: string,
+    sender?: string
+  ): Promise<string> => {
+    const template = STILL_TEMPLATES[templateId];
+    if (!template) throw new Error("Invalid template");
+
+    const width = 1080;
+    const height = 1920;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("No canvas context");
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+
+    return new Promise((resolve, reject) => {
+      img.onload = () => {
+        ctx.drawImage(img, 0, 0, width, height);
+
+        if (template.gradient) {
+          ctx.fillStyle = template.gradient;
+          ctx.fillRect(0, 0, width, height);
+        } else {
+          ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+          ctx.fillRect(0, 0, width, height);
+        }
+
+        const style = template.textStyle;
+        ctx.fillStyle = style.color;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowColor = style.shadowColor;
+        ctx.shadowBlur = style.shadowBlur;
+        ctx.shadowOffsetX = 3;
+        ctx.shadowOffsetY = 3;
+        ctx.font = `${style.fontWeight} ${style.fontSize}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+
+        const lines = wrapText(ctx, message, width * 0.85);
+        const lineHeight = style.fontSize * 1.5;
+        const totalHeight = lines.length * lineHeight;
+        let y = height / 2 - totalHeight / 2;
+
+        for (const line of lines) {
+          ctx.fillText(line, width / 2, y);
+          y += lineHeight;
+        }
+
+        if (sender) {
+          ctx.font = `400 ${style.fontSize * 0.5}px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+          ctx.globalAlpha = 0.9;
+          ctx.fillText(`— ${sender}`, width / 2, height - 120);
+          ctx.globalAlpha = 1;
+        }
+
+        resolve(canvas.toDataURL("image/png", 0.95));
+      };
+
+      img.onerror = () => reject(new Error("Failed to load template image"));
+      img.src = template.imageUrl;
+    });
+  };
+
   const handleSelectTemplate = async (templateId: StillTemplateId) => {
     setSelectedTemplate(templateId);
     try {
-      // renderStillImage returns a dataURL (png) preview
-      const preview = await renderStillImage(templateId, finalMessage, senderName);
-      setPreview(preview);
+      setError("Generating preview…");
+      const url = await renderStillImage(templateId, finalMessage, senderName);
+      setPreview(url);
+      setError("");
     } catch (err) {
-      console.error("Preview error:", err);
+      console.error(err);
       setError("Failed to generate preview");
     }
   };
 
-  const handleSelectGifPack = async (gifPackId: GifPackId) => {
+  // ---------- GIF pack selection (Status Trio) ----------
+
+  const handleSelectGifPack = (gifPackId: GifPackId) => {
     setSelectedGifPack(gifPackId);
-    try {
-      // generateGifMomentPreview should return a dataURL or blob URL preview
-      const previewUrl = await generateGifMomentPreview(gifPackId, finalMessage, senderName);
-      setPreview(previewUrl);
-    } catch (err) {
-      console.error("GIF preview error:", err);
-      setError("Failed to generate preview");
-    }
+    const pack = getGifPack(gifPackId);
+    if (pack) setPreview(pack.previewFrame);
   };
 
-  // --- helper: convert dataURL -> Blob
-  const dataUrlToBlob = (dataUrl: string) => {
-    const parts = dataUrl.split(",");
-    const meta = parts[0];
-    const base64 = parts[1];
-    const mime = meta.match(/:(.*?);/)?.[1] ?? "image/png";
-    const binary = atob(base64);
-    const len = binary.length;
-    const buf = new Uint8Array(len);
-    for (let i = 0; i < len; i++) buf[i] = binary.charCodeAt(i);
-    return new Blob([buf], { type: mime });
-  };
+  // ---------- GIF generation via API ----------
 
-  // upload dataURL (png) to Supabase storage, returns public URL
-  const uploadDataUrlToSupabase = async (dataUrl: string, filenamePrefix = "still") => {
-    try {
-      const blob = dataUrlToBlob(dataUrl);
-      const ext = blob.type === "image/png" ? "png" : blob.type === "image/jpeg" ? "jpg" : "png";
-      const fileName = `${filenamePrefix}-${uuidv4()}.${ext}`;
-      const path = fileName;
-      const { data, error } = await supabase.storage
-        .from("moments-media")
-        .upload(path, blob as any, { upsert: true });
+  const generateAndUploadGifPack = async (
+  packId: GifPackId,
+  receiverName: string,
+  message: string,
+  paystackReference: string
+): Promise<string[]> => {
+  const res = await fetch("/api/gif/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      packId,
+      receiverName,
+      message,
+      paystackReference,
+    }),
+  });
 
-      if (error) throw error;
-
-      const publicUrl = supabase.storage.from("moments-media").getPublicUrl(data.path).data.publicUrl;
-      return publicUrl;
-    } catch (err: any) {
-      console.error("Supabase upload error:", err);
-      throw err;
-    }
-  };
-
-  // upload a Blob/Response blob (like fetched gif blob)
-  const uploadBlobToSupabase = async (blob: Blob, filenamePrefix = "gif") => {
-    try {
-      const ext = blob.type === "image/gif" ? "gif" : blob.type === "video/mp4" ? "mp4" : "bin";
-      const fileName = `${filenamePrefix}-${uuidv4()}.${ext}`;
-      const path = fileName;
-      const { data, error } = await supabase.storage
-        .from("moments-media")
-        .upload(path, blob as any, { upsert: true });
-
-      if (error) throw error;
-
-      const publicUrl = supabase.storage.from("moments-media").getPublicUrl(data.path).data.publicUrl;
-      return publicUrl;
-    } catch (err: any) {
-      console.error("Supabase upload error:", err);
-      throw err;
-    }
-  };
-
-  const handlePayAndCreate = async () => {
-    try {
-      setError("");
-
-      if (!finalMessage.trim()) {
-        setError("Please generate a message first");
-        return;
-      }
-
-      if (!selectedFormat) {
-        setError("Please select a format");
-        return;
-      }
-
-      if (selectedFormat === "still" && !selectedTemplate) {
-        setError("Please select a template");
-        return;
-      }
-
-      if (selectedFormat === "gif" && !selectedGifPack) {
-        setError("Please select a GIF pack");
-        return;
-      }
-
-      setIsProcessing(true);
-
-      const isPaid = selectedFormat === "still" || selectedFormat === "gif";
-      const amount = selectedFormat === "still" ? 50 : selectedFormat === "gif" ? 100 : 0;
-
-      if (isPaid) {
-        const pendingData = {
-          delivery: selectedFormat,
-          message: finalMessage,
-          template: selectedTemplate || null,
-          gifPack: selectedGifPack || null,
-          receiverName,
-          senderName,
-          occasion,
-          relationship,
-          tone,
-          gender,
-        };
-        sessionStorage.setItem("pendingDelivery", JSON.stringify(pendingData));
-
-        const reference = uuidv4();
-        sessionStorage.setItem("lastPaystackReference", reference);
-
-        await initPaystackPayment({
-          email: "guest@raniaonline.com",
-          amount,
-          reference,
-          onError: (err) => {
-            setError(err.message || "Payment failed");
-            setIsProcessing(false);
-            sessionStorage.removeItem("pendingDelivery");
-            sessionStorage.removeItem("lastPaystackReference");
-          },
-        });
-      } else {
-        await createMoment(selectedFormat, false, 0, null, guestId, {
-          receiverName,
-          senderName,
-          occasion,
-          relationship,
-          tone,
-          gender,
-          message: finalMessage,
-        });
-      }
-    } catch (err: any) {
-      setError(err.message || "Something went wrong");
-      setIsProcessing(false);
-    }
-  };
-
-  const createMoment = async (
-    delivery: DeliveryFormat,
-    isPremium: boolean,
-    priceCharged: number,
-    reference: string | null,
-    id: string,
-    data: any
-  ) => {
-    try {
-      setError("");
-      setIsProcessing(true);
-
-      // Build core moment payload
-      const payload: any = {
-        guestId: id,
-        receiverName: data.receiverName || receiverName,
-        senderName: data.senderName || senderName,
-        occasion: data.occasion || occasion,
-        relationship: data.relationship || relationship,
-        tone: data.tone || tone,
-        gender: data.gender || gender,
-        messageText: data.message || finalMessage,
-        deliveryType: delivery,
-        template: selectedTemplate || null,
-        gifPack: selectedGifPack || null,
-        isPremium,
-        priceCharged,
-        referrerId: reference || null,
-      };
-
-      // 1) Generate / upload media to Supabase depending on format
-      if (delivery === "text") {
-        // generate PNG dataURL for text
-        const textDataUrl = await textToImage(payload.messageText, payload.senderName);
-        // upload to supabase
-        const publicUrl = await uploadDataUrlToSupabase(textDataUrl, "text");
-        payload.mediaUrl = publicUrl;
-      } else if (delivery === "still") {
-        // renderStillImage returns a dataURL
-        const stillDataUrl = await renderStillImage(payload.template, payload.messageText, payload.senderName);
-        const publicUrl = await uploadDataUrlToSupabase(stillDataUrl, "still");
-        payload.mediaUrl = publicUrl;
-      } else if (delivery === "gif") {
-        // generateGifMomentPreview may return a dataURL or an object URL
-        const preview = await generateGifMomentPreview(payload.gifPack, payload.messageText, payload.senderName);
-        // normalize: if preview is a dataURL string -> uploadDataUrlToSupabase; if preview is a blob/object url, fetch -> blob -> uploadBlobToSupabase
-        if (typeof preview === "string" && preview.startsWith("data:")) {
-          const publicUrl = await uploadDataUrlToSupabase(preview, "gif");
-          payload.mediaUrl = publicUrl;
-        } else {
-          // assume preview is a URL (blob/object URL or http)
-          const res = await fetch(preview);
-          const blob = await res.blob();
-          const publicUrl = await uploadBlobToSupabase(blob, "gif");
-          payload.mediaUrl = publicUrl;
-        }
-      }
-
-      // 2) Create moment record on backend (your existing /api/moments will store this)
-      const response = await fetch("/api/moments", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || "Failed to create moment");
-      }
-
-      const { moment } = await response.json();
-      setMomentId(moment.id);
-      setShareUrl(`${window.location.origin}/moment/${moment.id}`);
-      setMediaUrl(moment.mediaUrl || payload.mediaUrl || null);
-
-      setSuccessMessage(
-        `${delivery === "text" ? "📝 Text" : delivery === "still" ? "🖼️ Still" : "🎬 GIF"} moment created! 🎉`
-      );
-      setStep(4);
-    } catch (err: any) {
-      console.error("Create moment error:", err);
-      setError(err.message || "Failed to create moment");
-    } finally {
-      setIsProcessing(false);
-      setIsAutoCreating(false);
-    }
-  };
-
-  // generate a PNG dataURL from text (used for text-only moments)
-  // ADD ALL THESE FUNCTIONS IN THIS ORDER
-// Place them AFTER the textToImage function location in your component
-
-// ========== 1. TEXT TO IMAGE FUNCTION ==========
-const textToImage = async (text: string, signature?: string) => {
-  const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d")!;
-  
-  const width = 1080;
-  const height = 1350;
-  canvas.width = width;
-  canvas.height = height;
-
-  // background gradient
-  const g = ctx.createLinearGradient(0, 0, 0, height);
-  g.addColorStop(0, "#111827");
-  g.addColorStop(1, "#0f172a");
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, width, height);
-
-  // text style
-  ctx.fillStyle = "#FFFFFF";
-  ctx.textAlign = "center";
-
-  const baseFont = 48;
-  ctx.font = `700 ${baseFont}px Inter, system-ui, Arial`;
-  const maxWidth = width - 160;
-
-  // wrap text
-  const words = text.split(" ");
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const test = cur ? `${cur} ${w}` : w;
-    ctx.font = `700 ${baseFont}px Inter, system-ui, Arial`;
-    if (ctx.measureText(test).width > maxWidth && cur) {
-      lines.push(cur);
-      cur = w;
-    } else {
-      cur = test;
-    }
-  }
-  if (cur) lines.push(cur);
-
-  // reduce font if too many lines
-  let fontSize = baseFont;
-  while (lines.length * (fontSize * 1.2) > height * 0.6 && fontSize > 20) {
-    fontSize -= 2;
-    ctx.font = `700 ${fontSize}px Inter, system-ui, Arial`;
-    const newLines: string[] = [];
-    cur = "";
-    for (const w of words) {
-      const test = cur ? `${cur} ${w}` : w;
-      if (ctx.measureText(test).width > maxWidth && cur) {
-        newLines.push(cur);
-        cur = w;
-      } else {
-        cur = test;
-      }
-    }
-    if (cur) newLines.push(cur);
-    lines.splice(0, lines.length, ...newLines);
+  const data = await res.json();
+  if (!res.ok || !data.gifDataUrls) {
+    console.error("GIF create error:", data);
+    throw new Error(data.error || "Failed to generate GIF pack");
   }
 
-  // draw text
-  ctx.fillStyle = "#fff";
-  ctx.font = `700 ${fontSize}px Inter, system-ui, Arial`;
-  const lineHeight = fontSize * 1.25;
-  const startY = height / 2 - (lines.length - 1) * lineHeight / 2;
-
-  ctx.shadowColor = "rgba(0,0,0,0.6)";
-  ctx.shadowBlur = 14;
-  ctx.shadowOffsetY = 4;
-
-  let y = startY;
-  for (const line of lines) {
-    ctx.fillText(line.trim(), width / 2, y);
-    y += lineHeight;
+  const urls: string[] = [];
+  for (const gifDataUrl of data.gifDataUrls as string[]) {
+    const url = await uploadDataUrlToSupabase(gifDataUrl, "gif");
+    urls.push(url);
   }
-
-  // signature
-  if (signature) {
-    ctx.shadowColor = "transparent";
-    ctx.font = `500 20px Inter, system-ui, Arial`;
-    ctx.fillStyle = "#d1d5db";
-    ctx.fillText(`— ${signature}`, width / 2, height - 80);
-  }
-
-  return canvas.toDataURL("image/png");
+  return urls;
 };
 
-// ========== 2. SHARE ON WHATSAPP ==========
-const shareOnWhatsApp = async () => {
+  // ---------- Text → PNG (free) ----------
+
+  const textToImage = async (text: string, signature?: string) => {
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d")!;
+    const width = 1080;
+    const height = 1350;
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const g = ctx.createLinearGradient(0, 0, 0, height);
+    g.addColorStop(0, "#111827");
+    g.addColorStop(1, "#020617");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, width, height);
+
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffffff";
+
+    const baseFont = 48;
+    const maxWidth = width - 160;
+    let fontSize = baseFont;
+
+    const measureLines = (size: number) => {
+      ctx.font = `700 ${size}px Inter, system-ui, Arial`;
+      const words = text.split(" ");
+      const lines: string[] = [];
+      let cur = "";
+      for (const w of words) {
+        const test = cur ? `${cur} ${w}` : w;
+        if (ctx.measureText(test).width > maxWidth && cur) {
+          lines.push(cur);
+          cur = w;
+        } else {
+          cur = test;
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines;
+    };
+
+    let lines = measureLines(fontSize);
+    while (lines.length * (fontSize * 1.25) > height * 0.6 && fontSize > 22) {
+      fontSize -= 2;
+      lines = measureLines(fontSize);
+    }
+
+    ctx.font = `700 ${fontSize}px Inter, system-ui, Arial`;
+    const lineHeight = fontSize * 1.25;
+    const startY = height / 2 - ((lines.length - 1) * lineHeight) / 2;
+
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur = 14;
+    ctx.shadowOffsetY = 4;
+
+    let y = startY;
+    for (const line of lines) {
+      ctx.fillText(line.trim(), width / 2, y);
+      y += lineHeight;
+    }
+
+    if (signature) {
+      ctx.shadowColor = "transparent";
+      ctx.font = `500 20px Inter, system-ui, Arial`;
+      ctx.fillStyle = "#d1d5db";
+      ctx.fillText(`— ${signature}`, width / 2, height - 80);
+    }
+
+    return canvas.toDataURL("image/png");
+  };
+
+  // ---------- Create moment (DB insert only) ----------
+
+ const createMoment = async (
+  delivery: DeliveryFormat,
+  isPremium: boolean,
+  priceCharged: number,
+  reference: string | null,
+  id: string,
+  data: any
+) => {
   try {
     setError("");
-    
-    if (!mediaUrl) {
-      setError("No media available to share");
+    setIsProcessing(true);
+
+    const payload: any = {
+      guestId: id,
+      receiverName: data.receiverName || receiverName,
+      senderName: data.senderName || senderName,
+      occasion: data.occasion || occasion,
+      relationship: data.relationship || relationship,
+      tone: data.tone || tone,
+      gender: data.gender || gender,
+      messageText: data.message || finalMessage,
+      deliveryType: delivery,
+      isPremium,
+      priceCharged,
+    };
+
+    if (delivery === "still") {
+      const templateToUse = data.template || selectedTemplate;
+      if (!templateToUse) throw new Error("Missing template for Spotlight Poster");
+      if (!data.mediaUrl) throw new Error("Missing mediaUrl for still moment");
+
+      payload.template = templateToUse;
+      payload.mediaUrl = data.mediaUrl;
+    }
+
+    if (delivery === "gif") {
+      const packToUse = data.gifPack || selectedGifPack;
+      if (!packToUse) throw new Error("Missing GIF pack for Status Trio");
+
+      const gifUrls: string[] | undefined = data.gifUrls;
+      if (!gifUrls || gifUrls.length === 0) {
+        throw new Error("Missing GIF URLs for gif moment");
+      }
+
+      payload.gifPack = packToUse;
+      payload.gifUrls = gifUrls;
+      payload.mediaUrl = gifUrls[0]; // primary GIF
+    }
+
+    if (delivery === "text") {
+      if (!data.mediaUrl) throw new Error("Missing mediaUrl for text moment");
+      payload.mediaUrl = data.mediaUrl;
+    }
+
+    const res = await fetch("/api/moments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error || "Failed to create moment");
+
+    const { moment } = json;
+    setMomentId(moment.id);
+    setShareUrl(`${window.location.origin}/moment/${moment.id}`);
+    setMediaUrl(moment.mediaUrl || payload.mediaUrl || null);
+    setPreview(moment.mediaUrl || payload.mediaUrl || preview);
+
+    setSuccessMessage(
+      `${
+        delivery === "text"
+          ? "📝 Text"
+          : delivery === "still"
+          ? "🖼️ Spotlight Poster"
+          : "🎬 Status Trio"
+      } moment created! 🎉`
+    );
+    setStep(4);
+  } catch (err: any) {
+    console.error("Create moment error:", err);
+    setError(err.message || "Failed to create moment");
+  } finally {
+    setIsProcessing(false);
+  }
+};
+  // ---------- Pay + Create main flow ----------
+
+ const handlePayAndCreate = async () => {
+  try {
+    setError("");
+
+    if (!finalMessage.trim()) {
+      setError("Please generate a message first");
       return;
     }
 
-    const res = await fetch(mediaUrl);
-    if (!res.ok) {
-      throw new Error("Failed to fetch media for sharing");
-    }
-    
-    const blob = await res.blob();
-    const fileName = `rania-moment.${blob.type === "image/gif" ? "gif" : "png"}`;
-    const file = new File([blob], fileName, { type: blob.type });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({
-          files: [file],
-          title: "My Rania Moment",
-          text: finalMessage,
-        });
-        setSuccessMessage("Shared to WhatsApp! 💬");
-        setTimeout(() => setSuccessMessage(""), 2000);
-        return;
-      } catch (err: any) {
-        if (err.name === "AbortError") return;
-        console.log("Share API failed, trying fallback");
-      }
+    if (!selectedFormat) {
+      setError("Please select a format");
+      return;
     }
 
-    const encoded = encodeURIComponent(`Check out my Rania moment!\n\n${shareUrl}`);
-    window.open(`https://wa.me/?text=${encoded}`, "_blank");
-    setSuccessMessage("Opening WhatsApp... 💬");
-    setTimeout(() => setSuccessMessage(""), 2000);
+    if (selectedFormat === "still" && !selectedTemplate) {
+      setError("⚠️ Please select a background template first");
+      return;
+    }
+
+    if (selectedFormat === "gif" && !selectedGifPack) {
+      setError("⚠️ Please select a Status Trio style first");
+      return;
+    }
+
+    const isPaid = selectedFormat === "still" || selectedFormat === "gif";
+    const amount =
+      selectedFormat === "still"
+        ? 50
+        : selectedFormat === "gif"
+        ? 100
+        : 0;
+
+    const basePayload = {
+      delivery: selectedFormat,
+      message: finalMessage,
+      template: selectedTemplate,
+      gifPack: selectedGifPack,
+      receiverName,
+      senderName,
+      occasion,
+      relationship,
+      tone,
+      gender,
+    };
+
+    // 1) TEXT — FREE, NO PAYSTACK
+    if (!isPaid) {
+      setIsProcessing(true);
+
+      const textDataUrl = await textToImage(finalMessage, senderName);
+      const url = await uploadDataUrlToSupabase(textDataUrl, "text");
+
+      await createMoment("text", false, 0, null, guestId, {
+        ...basePayload,
+        mediaUrl: url,
+      });
+
+      setIsProcessing(false);
+      return;
+    }
+
+    // 2) PAID FLOWS: STILL + GIF
+    const reference = uuidv4();
+    sessionStorage.setItem("pendingDelivery", JSON.stringify(basePayload));
+    sessionStorage.setItem("lastPaystackReference", reference);
+    setIsProcessing(true);
+
+    // make sure you call **init**PaystackPayment, not nitPaystackPayment
+    initPaystackPayment({
+      email: "guest@raniaonline.com",
+      amount,
+      reference,
+      onSuccess: async () => {
+        try {
+          console.log("Paystack success. selectedFormat =", selectedFormat);
+
+          // 2A) GIF: /api/gif/create → upload → /api/moments
+          if (selectedFormat === "gif" && selectedGifPack) {
+            console.log("GIF path: calling /api/gif/create → generateAndUploadGifPack");
+
+            const gifUrls = await generateAndUploadGifPack(
+              selectedGifPack,
+              receiverName || "Someone Special",
+              finalMessage,
+              reference
+            );
+
+            await createMoment("gif", true, amount, reference, guestId, {
+              ...basePayload,
+              gifUrls,
+            });
+          }
+
+          // 2B) STILL: frontend render → upload → /api/moments
+          else if (selectedFormat === "still" && selectedTemplate) {
+            console.log("STILL path: frontend renderStillImage + upload");
+
+            const stillDataUrl = await renderStillImage(
+              selectedTemplate as StillTemplateId,
+              finalMessage,
+              senderName
+            );
+
+            const mediaUrlFromApi = await uploadDataUrlToSupabase(
+              stillDataUrl,
+              "still"
+            );
+
+            await createMoment("still", true, amount, reference, guestId, {
+              ...basePayload,
+              mediaUrl: mediaUrlFromApi,
+            });
+          } else {
+            console.warn(
+              "Paystack success but selectedFormat is neither gif nor still:",
+              selectedFormat
+            );
+          }
+        } catch (err: any) {
+          console.error(err);
+          setError(err.message || "Failed to finalize moment");
+        } finally {
+          setIsProcessing(false);
+          sessionStorage.removeItem("pendingDelivery");
+          sessionStorage.removeItem("lastPaystackReference");
+        }
+      },
+      onError: (err) => {
+        setError(err?.message || "Payment was cancelled or failed");
+        setIsProcessing(false);
+        sessionStorage.removeItem("pendingDelivery");
+        sessionStorage.removeItem("lastPaystackReference");
+      },
+    });
   } catch (err: any) {
-    console.error("Share error:", err);
-    setError(`Share failed: ${err.message}`);
+    console.error(err);
+    setError(err.message || "Something went wrong");
+    setIsProcessing(false);
   }
 };
+  // ---------- Share / Download / Copy ----------
 
-// ========== 3. DOWNLOAD MOMENT ==========
-const downloadMoment = async () => {
+  const shareOnWhatsApp = async () => {
+    try {
+      setError("");
+      if (!mediaUrl) {
+        setError("No media available to share");
+        return;
+      }
+
+      const res = await fetch(mediaUrl);
+      if (!res.ok) throw new Error("Failed to fetch media for sharing");
+
+      const blob = await res.blob();
+      const fileName = `rania-moment.${
+        blob.type === "image/gif" ? "gif" : "png"
+      }`;
+      const file = new File([blob], fileName, { type: blob.type });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            files: [file],
+            title: "My Rania Moment",
+            text: finalMessage,
+          });
+          setSuccessMessage("Shared to WhatsApp! 💬");
+          setTimeout(() => setSuccessMessage(""), 2000);
+          return;
+        } catch (err: any) {
+          if (err.name === "AbortError") return;
+        }
+      }
+
+      const encoded = encodeURIComponent(
+        `Check out my Rania moment!\n\n${shareUrl}`
+      );
+      window.open(`https://wa.me/?text=${encoded}`, "_blank");
+      setSuccessMessage("Opening WhatsApp... 💬");
+      setTimeout(() => setSuccessMessage(""), 2000);
+    } catch (err: any) {
+      console.error(err);
+      setError(`Share failed: ${err.message}`);
+    }
+  };
+
+  const downloadMoment = async () => {
   try {
     setError("");
-    
+
     let downloadUrl = mediaUrl;
-    
+
     if (!downloadUrl && momentId) {
-      try {
-        const response = await fetch(`/api/moments/${momentId}`);
-        if (!response.ok) {
-          throw new Error("Failed to fetch moment details");
-        }
-        const data = await response.json();
-        downloadUrl = data.moment?.mediaUrl || data.moment?.gifUrl || null;
-      } catch (err: any) {
-        throw new Error("Could not retrieve media URL from server");
-      }
+      const res = await fetch(`/api/moments/${momentId}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to fetch moment details");
+      downloadUrl = data.moment?.mediaUrl || data.moment?.gifUrl || null;
     }
 
     if (!downloadUrl) {
@@ -547,52 +879,44 @@ const downloadMoment = async () => {
       return;
     }
 
-    if (!downloadUrl.startsWith("http://") && !downloadUrl.startsWith("https://")) {
-      setError("Invalid media URL");
-      return;
-    }
-
-    const res = await fetch(downloadUrl, {
-      method: "GET",
-      headers: {
-        "Accept": "image/png, image/gif, image/jpeg, image/*",
-      },
-    });
-
+    const res = await fetch(downloadUrl);
     if (!res.ok) {
-      throw new Error(`Server returned status ${res.status}: ${res.statusText}`);
+      throw new Error(`Failed to download media (status ${res.status})`);
     }
 
     const blob = await res.blob();
-    
     if (!blob || blob.size === 0) {
       setError("Downloaded file is empty");
       return;
     }
-    
+
+    // Decide extension more aggressively for GIF
     let ext = "png";
-    if (blob.type === "image/gif") ext = "gif";
-    else if (blob.type === "image/jpeg") ext = "jpg";
-    else if (blob.type === "application/octet-stream") {
+    if (blob.type === "image/gif") {
+      ext = "gif";
+    } else if (blob.type === "image/jpeg") {
+      ext = "jpg";
+    } else if (blob.type === "application/octet-stream") {
+      // Try to infer from URL if server didn't give a proper mime
       if (downloadUrl.includes(".gif")) ext = "gif";
-      else if (downloadUrl.includes(".jpg")) ext = "jpg";
-      else ext = "png";
+      else if (downloadUrl.includes(".jpg") || downloadUrl.includes(".jpeg"))
+        ext = "jpg";
+      else if (downloadUrl.includes(".png")) ext = "png";
+    }
+
+    // If this is a GIF moment and extension is still not gif, force gif
+    if (selectedFormat === "gif" && ext !== "gif") {
+      ext = "gif";
     }
 
     const blobUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = blobUrl;
     link.download = `rania-moment-${momentId || Date.now()}.${ext}`;
-    
     document.body.appendChild(link);
     link.click();
-    
-    setTimeout(() => {
-      if (document.body.contains(link)) {
-        document.body.removeChild(link);
-      }
-      URL.revokeObjectURL(blobUrl);
-    }, 100);
+    document.body.removeChild(link);
+    URL.revokeObjectURL(blobUrl);
 
     setSuccessMessage("Downloaded! 📥");
     setTimeout(() => setSuccessMessage(""), 2000);
@@ -601,50 +925,19 @@ const downloadMoment = async () => {
     setError(`Download failed: ${err.message}`);
   }
 };
+   const copyToClipboard = () => {
+    navigator.clipboard.writeText(shareUrl);
+    setSuccessMessage("Link copied! 📋");
+    setTimeout(() => setSuccessMessage(""), 2000);
+  };
 
-// ========== 4. SHARE IMAGE DIRECT (Alternative) ==========
-const shareImageDirect = async () => {
-  try {
-    if (!mediaUrl) {
-      setError("No media available to share");
-      return;
-    }
+  // ===================================================================
+  // JSX
+  // ===================================================================
 
-    const res = await fetch(mediaUrl);
-    const blob = await res.blob();
-
-    if (navigator.canShare && navigator.canShare({ files: [new File([], "")] })) {
-      const file = new File([blob], `rania-moment.${blob.type === "image/gif" ? "gif" : "png"}`, {
-        type: blob.type,
-      });
-
-      await navigator.share({
-        files: [file],
-        title: "My Rania Moment",
-        text: finalMessage,
-      });
-    } else {
-      const encoded = encodeURIComponent(`Check out my Rania moment! ${shareUrl}`);
-      window.open(`https://wa.me/?text=${encoded}`, "_blank");
-    }
-  } catch (err: any) {
-    if (err.name !== "AbortError") {
-      console.error("Share error:", err);
-      const encoded = encodeURIComponent(`Check out my Rania moment! ${shareUrl}`);
-      window.open(`https://wa.me/?text=${encoded}`, "_blank");
-    }
-  }
-};
-
-// ========== 5. COPY TO CLIPBOARD (Last) ==========
-const copyToClipboard = () => {
-  navigator.clipboard.writeText(shareUrl);
-  setSuccessMessage("Link copied! 📋");
-  setTimeout(() => setSuccessMessage(""), 2000);
-};
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-purple-950 to-black text-white py-12 px-4">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-3xl mx-auto relative">
         {/* Header */}
         <div className="text-center mb-12">
           <div className="flex items-center justify-center gap-2 mb-4">
@@ -654,19 +947,21 @@ const copyToClipboard = () => {
             </h1>
             <Sparkles className="w-6 h-6 text-purple-400" />
           </div>
-          <p className="text-slate-300 text-lg">Say what matters in a way they&apos;ll never forget</p>
+          <p className="text-slate-300 text-lg">
+            Say what matters in a way they&apos;ll never forget
+          </p>
         </div>
 
-        {/* Error & Success Banners */}
+        {/* Error / success */}
         {error && (
-          <div className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 flex gap-3 animate-in">
+          <div className="mb-6 p-4 rounded-lg bg-red-500/20 border border-red-500/50 flex gap-3">
             <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400 mt-0.5" />
             <p className="text-red-200 text-sm">{error}</p>
           </div>
         )}
 
         {successMessage && successMessage !== "Link copied! 📋" && (
-          <div className="mb-6 p-4 rounded-lg bg-green-500/20 border border-green-500/50 flex gap-3 animate-in">
+          <div className="mb-6 p-4 rounded-lg bg-green-500/20 border border-green-500/50 flex gap-3">
             <CheckCircle className="w-5 h-5 flex-shrink-0 text-green-400 mt-0.5" />
             <p className="text-green-200 text-sm">{successMessage}</p>
           </div>
@@ -704,7 +999,9 @@ const copyToClipboard = () => {
 
             <div className="grid md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-semibold text-slate-200 mb-2">📅 Occasion</label>
+                <label className="block text-sm font-semibold text-slate-200 mb-2">
+                  📅 Occasion
+                </label>
                 <input
                   type="text"
                   placeholder="e.g., Birthday, Anniversary..."
@@ -714,7 +1011,9 @@ const copyToClipboard = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold text-slate-200 mb-2">💝 Relationship</label>
+                <label className="block text-sm font-semibold text-slate-200 mb-2">
+                  💝 Relationship
+                </label>
                 <select
                   value={relationship}
                   onChange={(e) => setRelationship(e.target.value)}
@@ -731,10 +1030,14 @@ const copyToClipboard = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-slate-200 mb-2">⚧ Gender (affects wording)</label>
+                <label className="block text-sm font-semibold text-slate-200 mb-2">
+                  ⚧ Gender (affects wording)
+                </label>
                 <select
                   value={gender}
-                  onChange={(e) => setGender(e.target.value as any)}
+                  onChange={(e) =>
+                    setGender(e.target.value as "none" | "male" | "female")
+                  }
                   className="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-600 text-white focus:border-emerald-400 outline-none transition"
                 >
                   <option value="none">Prefer not to specify</option>
@@ -745,7 +1048,9 @@ const copyToClipboard = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-200 mb-2">🎭 Tone/Vibe</label>
+              <label className="block text-sm font-semibold text-slate-200 mb-2">
+                🎭 Tone/Vibe
+              </label>
               <select
                 value={tone}
                 onChange={(e) => setTone(e.target.value)}
@@ -761,7 +1066,9 @@ const copyToClipboard = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-slate-200 mb-2">💬 What do you want to say?</label>
+              <label className="block text-sm font-semibold text-slate-200 mb-2">
+                💬 What do you want to say?
+              </label>
               <textarea
                 placeholder="Share what's on your heart... Be authentic!"
                 value={userMessage}
@@ -770,8 +1077,14 @@ const copyToClipboard = () => {
                 className="w-full px-4 py-3 rounded-lg bg-slate-950 border border-slate-600 text-white focus:border-emerald-400 outline-none transition min-h-[150px] resize-none"
               />
               <div className="flex justify-between items-center mt-2">
-                <p className="text-xs text-slate-500">{userMessage.length}/500 characters</p>
-                {userMessage.length > 450 && <p className="text-xs text-amber-400">Keep it concise for best results!</p>}
+                <p className="text-xs text-slate-500">
+                  {userMessage.length}/500 characters
+                </p>
+                {userMessage.length > 450 && (
+                  <p className="text-xs text-amber-400">
+                    Keep it concise for best results!
+                  </p>
+                )}
               </div>
             </div>
 
@@ -795,7 +1108,6 @@ const copyToClipboard = () => {
           </div>
         )}
 
-        
         {/* STEP 2: Choose Format */}
         {step === 2 && !selectedFormat && (
           <div className="space-y-6">
@@ -806,7 +1118,9 @@ const copyToClipboard = () => {
             </div>
 
             <div className="space-y-4">
-              <h3 className="text-lg font-bold text-slate-200">How would you like to share it?</h3>
+              <h3 className="text-lg font-bold text-slate-200">
+                How would you like to share it?
+              </h3>
 
               <button
                 onClick={() => {
@@ -817,8 +1131,12 @@ const copyToClipboard = () => {
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <h4 className="font-bold text-emerald-400 mb-1 text-lg">📝 Text Moment</h4>
-                    <p className="text-sm text-slate-300">Clean text card, perfect for sharing</p>
+                    <h4 className="font-bold text-emerald-400 mb-1 text-lg">
+                      📝 Text Moment
+                    </h4>
+                    <p className="text-sm text-slate-300">
+                      Clean text card, perfect for sharing
+                    </p>
                   </div>
                   <span className="font-bold text-emerald-400 text-lg group-hover:scale-110 transition">
                     FREE
@@ -835,8 +1153,12 @@ const copyToClipboard = () => {
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <h4 className="font-bold text-indigo-400 mb-1 text-lg">🖼️ Still Moment</h4>
-                    <p className="text-sm text-slate-300">Beautiful animated background + text</p>
+                    <h4 className="font-bold text-indigo-400 mb-1 text-lg">
+                      🖼️ Spotlight Poster
+                    </h4>
+                    <p className="text-sm text-slate-300">
+                      Premium poster-style image with your message
+                    </p>
                   </div>
                   <span className="font-bold text-indigo-400 text-lg group-hover:scale-110 transition">
                     KES 50
@@ -853,8 +1175,12 @@ const copyToClipboard = () => {
               >
                 <div className="flex justify-between items-start">
                   <div>
-                    <h4 className="font-bold text-purple-400 mb-1 text-lg">🎬 GIF Pack</h4>
-                    <p className="text-sm text-slate-300">3 animated GIFs with effects & colors</p>
+                    <h4 className="font-bold text-purple-400 mb-1 text-lg">
+                      🎬 Status Trio
+                    </h4>
+                    <p className="text-sm text-slate-300">
+                      Animated status-style visual (3 GIFs, backend)
+                    </p>
                   </div>
                   <span className="font-bold text-purple-400 text-lg group-hover:scale-110 transition">
                     KES 100
@@ -872,10 +1198,12 @@ const copyToClipboard = () => {
           </div>
         )}
 
-        {/* STEP 3: Select Template/Pack & Preview */}
+        {/* STEP 3: Spotlight Poster Selection */}
         {step === 3 && selectedFormat === "still" && (
           <div className="space-y-6">
-            <h3 className="text-lg font-bold text-slate-200">🎨 Choose Your Background</h3>
+            <h3 className="text-lg font-bold text-slate-200">
+              🎨 Choose Your Spotlight Poster Background
+            </h3>
             <div className="grid md:grid-cols-3 gap-4">
               {getAllTemplates().map((template) => (
                 <button
@@ -893,7 +1221,9 @@ const copyToClipboard = () => {
                     className="w-full h-full object-cover group-hover:scale-110 transition duration-300"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-3">
-                    <p className="text-white font-semibold text-sm">{template.name}</p>
+                    <p className="text-white font-semibold text-sm">
+                      {template.name}
+                    </p>
                   </div>
                   {selectedTemplate === template.id && (
                     <div className="absolute inset-0 flex items-center justify-center bg-emerald-400/10 border-2 border-emerald-400">
@@ -945,12 +1275,14 @@ const copyToClipboard = () => {
           </div>
         )}
 
-        {/* STEP 3: GIF Pack Selection */}
+        {/* STEP 3: Status Trio (GIF) Selection */}
         {step === 3 && selectedFormat === "gif" && (
           <div className="space-y-6">
-            <h3 className="text-lg font-bold text-slate-200">🌈 Choose Your GIF Style</h3>
+            <h3 className="text-lg font-bold text-slate-200">
+              🌈 Choose Your Status Trio Style
+            </h3>
             <div className="grid md:grid-cols-2 gap-4">
-              {getAllGifPacks().map((pack) => (
+              {GIF_PACKS.map((pack) => (
                 <button
                   key={pack.id}
                   onClick={() => handleSelectGifPack(pack.id)}
@@ -966,14 +1298,15 @@ const copyToClipboard = () => {
                       <CheckCircle className="w-5 h-5 text-purple-400" />
                     )}
                   </div>
-                  <div className="flex gap-2">
-                    {pack.colors.map((color, i) => (
-                      <div
-                        key={i}
-                        className="w-12 h-12 rounded-lg border border-slate-500"
-                        style={{ backgroundColor: color }}
-                      />
-                    ))}
+                  <p className="text-xs text-slate-300 mb-3">
+                    {pack.description}
+                  </p>
+                  <div className="w-full aspect-[9/16] rounded-lg overflow-hidden border border-slate-600">
+                    <img
+                      src={pack.previewFrame}
+                      alt={pack.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 </button>
               ))}
@@ -1070,7 +1403,6 @@ const copyToClipboard = () => {
               <p className="text-slate-300">{successMessage}</p>
             </div>
 
-            {/* Display Preview */}
             {preview && (
               <div className="rounded-xl overflow-hidden border border-emerald-500/50 max-w-sm mx-auto">
                 <img src={preview} alt="Your moment" className="w-full h-auto" />
@@ -1113,7 +1445,7 @@ const copyToClipboard = () => {
               </button>
             </div>
 
-            {/* View Online Button */}
+            {/* View Online */}
             <button
               onClick={() => window.open(shareUrl, "_blank")}
               className="w-full py-3 rounded-lg bg-slate-800 hover:bg-slate-700 font-semibold transition border border-slate-600"
@@ -1148,13 +1480,33 @@ const copyToClipboard = () => {
             </button>
           </div>
         )}
+
+        {/* GLOBAL PROCESSING OVERLAY */}
+        {isProcessing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl px-6 py-4 flex items-center gap-3 shadow-xl">
+              <Loader className="w-6 h-6 animate-spin text-emerald-400" />
+              <div className="text-left">
+                <p className="text-sm font-semibold text-slate-100">
+                  {selectedFormat === "gif"
+                    ? "Generating your Status Trio…"
+                    : selectedFormat === "still"
+                    ? "Creating your Spotlight Poster…"
+                    : "Creating your text moment…"}
+                </p>
+                <p className="text-xs text-slate-400">
+                  This may take a few seconds. Please don&apos;t close this page.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-
-export default function CreateMomentPage(): React.ReactElement {
+export default function CreateMomentPage(): JSX.Element {
   return (
     <Suspense
       fallback={

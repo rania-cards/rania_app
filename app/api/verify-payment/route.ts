@@ -1,53 +1,86 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const paystackSecretKey = process.env.PAYSTACK_SECRET_KEY;
+const paystackCurrency = process.env.PAYSTACK_CURRENCY ?? "KES";
 
-if (!PAYSTACK_SECRET_KEY) {
-  throw new Error("Missing PAYSTACK_SECRET_KEY");
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
+);
 
-export async function POST(request: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { reference } = await request.json();
+    const { reference, guestId, amount } = await req.json();
 
-    if (!reference) {
+    if (!reference || !guestId) {
       return NextResponse.json(
-        { error: "Missing payment reference" },
+        { verified: false, error: "Missing reference or guestId" },
         { status: 400 }
       );
     }
 
-    // Verify with Paystack
-    const response = await fetch(
+    // record initial payment attempt
+    await supabase.from("payments").upsert(
+      {
+        guest_id: guestId,
+        reference,
+        amount,
+        status: "init",
+        verified: false,
+      },
+      { onConflict: "reference" }
+    );
+
+    if (!paystackSecretKey) {
+      console.warn("Missing PAYSTACK_SECRET_KEY — cannot verify");
+      return NextResponse.json(
+        { verified: false, error: "No secret key" },
+        { status: 500 }
+      );
+    }
+
+    const paystackRes = await fetch(
       `https://api.paystack.co/transaction/verify/${reference}`,
       {
         headers: {
-          Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+          Authorization: `Bearer ${paystackSecretKey}`,
         },
       }
     );
 
-    const data = await response.json();
+    const json = await paystackRes.json();
 
-    if (!response.ok) {
+    const isSuccess =
+      paystackRes.ok &&
+      json.status === true &&
+      json.data?.status === "success";
+
+    const paymentStatus = isSuccess ? "success" : "failed";
+
+    // update payments table with real result
+    await supabase.from("payments").update({
+      status: paymentStatus,
+      verified: isSuccess,
+      raw_provider: json,
+      currency: json.data?.currency ?? paystackCurrency,
+      updated_at: new Date().toISOString(),
+    }).eq("reference", reference);
+
+    if (!isSuccess) {
       return NextResponse.json(
-        { error: data.message || "Payment verification failed" },
+        { verified: false, error: json.message || "Verification failed", raw: json },
         { status: 400 }
       );
     }
 
-    // Return verification result
-    return NextResponse.json({
-      status: data.data.status,
-      amount: data.data.amount / 100, // Convert from cents to KES
-      reference: data.data.reference,
-      customer: data.data.customer,
-    });
+    return NextResponse.json({ verified: true, payment: json.data });
   } catch (err: any) {
-    console.error("Payment verification error:", err);
+    console.error("verify-payment error:", err);
     return NextResponse.json(
-      { error: err.message || "Verification failed" },
+      { verified: false, error: err.message },
       { status: 500 }
     );
   }

@@ -483,4 +483,4 @@ function wrapText(
 
   if (currentLine) lines.push(currentLine);
   return lines;
-}
+} 
