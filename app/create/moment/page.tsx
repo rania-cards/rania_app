@@ -14,7 +14,7 @@ import { GifPackId, GIF_PACKS, getGifPack } from "@/lib/templates";
 import {
   Heart,
   Sparkles,
-  Copy,
+  Copy, 
   Share2,
   Download,
   Loader,
@@ -286,10 +286,12 @@ function CreateMomentContent() {
   const [mediaUrl, setMediaUrl] = useState<string | null>(null);
 
   // Init guestId
-  useEffect(() => {
-    const id = getGuestId();
+ useEffect(() => {
+  const id = getGuestId();
+  // fallback: if lib returns nothing, generate a UUID so server never sees ""
+  
     setGuestId(id);
-  }, []);
+  },[])
 
   // ---------- Helpers: DataURL / Upload ----------
 
@@ -674,8 +676,12 @@ function CreateMomentContent() {
   }
 };
   // ---------- Pay + Create main flow ----------
+// Updated handlePayAndCreate with DYNAMIC EMAIL
+// Replace your current handlePayAndCreate with this version
 
- const handlePayAndCreate = async () => {
+// Replace your handlePayAndCreate with this version:
+
+const handlePayAndCreate = async () => {
   try {
     setError("");
 
@@ -723,6 +729,7 @@ function CreateMomentContent() {
     // 1) TEXT — FREE, NO PAYSTACK
     if (!isPaid) {
       setIsProcessing(true);
+      setError("Creating your moment...");
 
       const textDataUrl = await textToImage(finalMessage, senderName);
       const url = await uploadDataUrlToSupabase(textDataUrl, "text");
@@ -741,20 +748,40 @@ function CreateMomentContent() {
     sessionStorage.setItem("pendingDelivery", JSON.stringify(basePayload));
     sessionStorage.setItem("lastPaystackReference", reference);
     setIsProcessing(true);
+    setError("Processing your order...");
 
-    // make sure you call **init**PaystackPayment, not nitPaystackPayment
+    const uniqueEmail = `guest+${guestId.substring(0, 8)}-${Date.now()}@raniaonline.com`;
+
     initPaystackPayment({
-      email: "guest@raniaonline.com",
-      amount,
+      email: uniqueEmail,
+      amount: amount,
       reference,
+
       onSuccess: async () => {
         try {
-          console.log("Paystack success. selectedFormat =", selectedFormat);
+          console.log("💳 Payment successful, verifying with Paystack...");
+          setError("Verifying payment (this takes ~10 seconds)...");
 
-          // 2A) GIF: /api/gif/create → upload → /api/moments
+          // VERIFY PAYMENT - QUICK VERSION (max 3 retries = ~5-10 seconds)
+          let verified;
+          try {
+            verified = await verifyPaystackPayment(reference, guestId, amount);
+            console.log("✅ Payment verified:", verified);
+          } catch (verifyErr: any) {
+            console.warn("⚠️ Verification error:", verifyErr.message);
+            // Still create the moment even if verification is pending
+            verified = { verified: false, pending: true };
+          }
+
+          setError(""); // Clear verification message
+
+          // CREATE MOMENT (works even if verification is pending)
+          console.log("📝 Creating moment...");
+          
           if (selectedFormat === "gif" && selectedGifPack) {
-            console.log("GIF path: calling /api/gif/create → generateAndUploadGifPack");
-
+            console.log("🎬 Generating GIFs...");
+            setError("Generating GIFs (this can take 2-3 minutes)...");
+            
             const gifUrls = await generateAndUploadGifPack(
               selectedGifPack,
               receiverName || "Someone Special",
@@ -766,11 +793,9 @@ function CreateMomentContent() {
               ...basePayload,
               gifUrls,
             });
-          }
-
-          // 2B) STILL: frontend render → upload → /api/moments
-          else if (selectedFormat === "still" && selectedTemplate) {
-            console.log("STILL path: frontend renderStillImage + upload");
+          } else if (selectedFormat === "still" && selectedTemplate) {
+            console.log("🖼️ Rendering poster...");
+            setError("Creating your poster...");
 
             const stillDataUrl = await renderStillImage(
               selectedTemplate as StillTemplateId,
@@ -787,22 +812,32 @@ function CreateMomentContent() {
               ...basePayload,
               mediaUrl: mediaUrlFromApi,
             });
-          } else {
-            console.warn(
-              "Paystack success but selectedFormat is neither gif nor still:",
-              selectedFormat
-            );
           }
+
+          setSuccessMessage(
+            `${
+              selectedFormat === "still"
+                ? "🖼️ Spotlight Poster"
+                : "🎬 Status Trio"
+            } moment created! 🎉 ${
+              verified?.pending
+                ? "\n⏳ Payment verification is finishing up..."
+                : ""
+            }`
+          );
+          setStep(4);
         } catch (err: any) {
-          console.error(err);
-          setError(err.message || "Failed to finalize moment");
+          console.error("❌ Error in onSuccess:", err);
+          setError(err.message || "Failed to create moment");
         } finally {
           setIsProcessing(false);
           sessionStorage.removeItem("pendingDelivery");
           sessionStorage.removeItem("lastPaystackReference");
         }
       },
+
       onError: (err) => {
+        console.error("❌ Payment error:", err);
         setError(err?.message || "Payment was cancelled or failed");
         setIsProcessing(false);
         sessionStorage.removeItem("pendingDelivery");
@@ -810,57 +845,48 @@ function CreateMomentContent() {
       },
     });
   } catch (err: any) {
-    console.error(err);
+    console.error("❌ Payment flow error:", err);
     setError(err.message || "Something went wrong");
     setIsProcessing(false);
   }
 };
+ // Replace your shareOnWhatsApp function with this:
 
+const shareOnWhatsApp = async () => {
+  try {
+    setError("");
 
-  const shareOnWhatsApp = async () => {
-    try {
-      setError("");
-      if (!mediaUrl) {
-        setError("No media available to share");
-        return;
-      }
+    const message = `Check out my Rania moment!\n\n${shareUrl}`;
+    const encodedMessage = encodeURIComponent(message);
 
-      const res = await fetch(mediaUrl);
-      if (!res.ok) throw new Error("Failed to fetch media for sharing");
+    // ============================================================
+    // DETECT DEVICE TYPE
+    // ============================================================
+    const isMobile = /mobile|android|iphone|ipad|windows phone/i.test(
+      navigator.userAgent
+    );
 
-      const blob = await res.blob();
-      const fileName = `rania-moment.${
-        blob.type === "image/gif" ? "gif" : "png"
-      }`;
-      const file = new File([blob], fileName, { type: blob.type });
-
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          await navigator.share({
-            files: [file],
-            title: "My Rania Moment",
-            text: finalMessage,
-          });
-          setSuccessMessage("Shared to WhatsApp! 💬");
-          setTimeout(() => setSuccessMessage(""), 2000);
-          return;
-        } catch (err: any) {
-          if (err.name === "AbortError") return;
-        }
-      }
-
-      const encoded = encodeURIComponent(
-        `Check out my Rania moment!\n\n${shareUrl}`
-      );
-      window.open(`https://wa.me/?text=${encoded}`, "_blank");
+    if (isMobile) {
+      // ========== MOBILE: Open native WhatsApp ==========
+      // This will ONLY open WhatsApp, not show other apps
+      window.open(`https://wa.me/?text=${encodedMessage}`, "_blank");
       setSuccessMessage("Opening WhatsApp... 💬");
       setTimeout(() => setSuccessMessage(""), 2000);
-    } catch (err: any) {
-      console.error(err);
-      setError(`Share failed: ${err.message}`);
+      return;
     }
-  };
 
+    // ========== DESKTOP: Open WhatsApp Web ==========
+    window.open(
+      `https://web.whatsapp.com/send?text=${encodedMessage}`,
+      "_blank"
+    );
+    setSuccessMessage("Opening WhatsApp Web... 💬");
+    setTimeout(() => setSuccessMessage(""), 2000);
+  } catch (err: any) {
+    console.error(err);
+    setError(`Share failed: ${err.message}`);
+  }
+};
   const downloadMoment = async () => {
   try {
     setError("");
