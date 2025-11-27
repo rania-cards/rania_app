@@ -720,177 +720,208 @@ function CreateMomentContent() {
   // ---------- Pay + Create main flow ----------
 
   const handlePayAndCreate = async () => {
-    try {
-      setError("");
+  try {
+    setError("");
 
-      if (!finalMessage.trim()) {
-        setError("Please generate a message first");
-        return;
-      }
+    if (!finalMessage.trim()) {
+      setError("Please generate a message first");
+      return;
+    }
 
-      if (!selectedFormat) {
-        setError("Please select a format");
-        return;
-      }
+    if (!selectedFormat) {
+      setError("Please select a format");
+      return;
+    }
 
-      if (selectedFormat === "still" && !selectedTemplate) {
-        setError("⚠️ Please select a background template first");
-        return;
-      }
+    if (selectedFormat === "still" && !selectedTemplate) {
+      setError("⚠️ Please select a background template first");
+      return;
+    }
 
-      if (selectedFormat === "gif" && !selectedGifUrl) {
-        setError("⚠️ Please select a GIF first");
-        return;
-      }
+    if (selectedFormat === "gif" && !selectedGifUrl) {
+      setError("⚠️ Please select a GIF first");
+      return;
+    }
 
-      const isPaid = selectedFormat === "still" || selectedFormat === "gif";
-      const amount =
-        selectedFormat === "still"
-          ? 50
-          : selectedFormat === "gif"
-          ? 100
-          : 0;
+    const isPaid = selectedFormat === "still" || selectedFormat === "gif";
+    const amount =
+      selectedFormat === "still"
+        ? 50
+        : selectedFormat === "gif"
+        ? 100
+        : 0;
 
-      const basePayload = {
-        delivery: selectedFormat,
-        message: finalMessage,
-        template: selectedTemplate,
-        receiverName,
-        senderName,
-        occasion,
-        relationship,
-        tone,
-        gender,
-      };
+    const basePayload = {
+      delivery: selectedFormat,
+      message: finalMessage,
+      template: selectedTemplate,
+      receiverName,
+      senderName,
+      occasion,
+      relationship,
+      tone,
+      gender,
+    };
 
-      // 1) TEXT — FREE, NO PAYSTACK
-      if (!isPaid) {
-        setIsProcessing(true);
-        setError("Creating your moment...");
-
-        const textDataUrl = await textToImage(finalMessage, senderName);
-        const url = await uploadDataUrlToSupabase(textDataUrl, "text");
-
-        await createMoment("text", false, 0, null, guestId, {
-          ...basePayload,
-          mediaUrl: url,
-        });
-
-        setIsProcessing(false);
-        return;
-      }
-
-      // 2) PAID FLOWS: STILL + GIF
-      const reference = uuidv4();
-      sessionStorage.setItem("pendingDelivery", JSON.stringify(basePayload));
-      sessionStorage.setItem("lastPaystackReference", reference);
+    // 1) TEXT — FREE, NO PAYSTACK
+    if (!isPaid) {
       setIsProcessing(true);
-      setError("Processing your order...");
+      setError("Creating your moment...");
 
-      const uniqueEmail = `guest+${guestId.substring(
-        0,
-        8
-      )}-${Date.now()}@raniaonline.com`;
+      const textDataUrl = await textToImage(finalMessage, senderName);
+      const url = await uploadDataUrlToSupabase(textDataUrl, "text");
 
-      initPaystackPayment({
-        email: uniqueEmail,
-        amount: amount,
-        reference,
+      await createMoment("text", false, 0, null, guestId, {
+        ...basePayload,
+        mediaUrl: url,
+      });
 
-        onSuccess: async () => {
+      setIsProcessing(false);
+      return;
+    }
+
+    // 2) PAID FLOWS: STILL + GIF
+    const reference = uuidv4();
+    sessionStorage.setItem("pendingDelivery", JSON.stringify(basePayload));
+    sessionStorage.setItem("lastPaystackReference", reference);
+    setIsProcessing(true);
+    setError("Processing your order...");
+
+    const uniqueEmail = `guest+${guestId.substring(
+      0,
+      8
+    )}-${Date.now()}@raniaonline.com`;
+
+    initPaystackPayment({
+      email: uniqueEmail,
+      amount: amount,
+      reference,
+
+      onSuccess: async () => {
+        try {
+          console.log("💳 Payment successful, verifying with Paystack...");
+          setError("Verifying payment...");
+
+          let verified;
           try {
-            console.log("💳 Payment successful, verifying with Paystack...");
-            setError("Verifying payment...");
+            verified = await verifyPaystackPayment(reference, guestId, amount);
+            console.log("✅ Payment verified:", verified);
+          } catch (verifyErr: any) {
+            console.warn("⚠️ Verification error:", verifyErr.message);
+            verified = { verified: false, pending: true };
+          }
 
-            let verified;
-            try {
-              verified = await verifyPaystackPayment(reference, guestId, amount);
-              console.log("✅ Payment verified:", verified);
-            } catch (verifyErr: any) {
-              console.warn("⚠️ Verification error:", verifyErr.message);
-              verified = { verified: false, pending: true };
+          setError("");
+          console.log("📝 Creating moment...");
+
+          // STILL POSTER PATH (PAID)
+          if (selectedFormat === "still") {
+            if (!selectedTemplate) {
+              throw new Error("No still template selected");
             }
 
-            setError("");
+            console.log("STILL path: render canvas poster");
 
-            // CREATE MOMENT
-            console.log("📝 Creating moment...");
-
-        if (selectedFormat === "gif") {
-  if (!selectedGifUrl) {
-    throw new Error("No GIF selected");
-  }
-
-  console.log("GIF path: unified card via Tenor + canvas");
-
-  // 1) Ask server to wrap the selected Tenor GIF in your card
-  const res = await fetch("/api/gif/create", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      tenorGifUrl: selectedGifUrl,                      // <— critical
-      receiverName: receiverName || "Someone Special",
-      message: finalMessage || userMessage,
-      senderName,
-    }),
-  });
-
-  const data = await res.json();
-  if (!res.ok || !data.gifDataUrl) {
-    console.error("GIF create API error:", data);
-    throw new Error(data.error || "Failed to create Status Trio GIF");
-  }
-
-  const gifDataUrl: string = data.gifDataUrl;
-
-  // 2) Upload the composed GIF to Supabase
-  const gifMediaUrl = await uploadDataUrlToSupabase(gifDataUrl, "gif");
-
-  // 3) Persist as the moment’s media_url
-  await createMoment("gif", true, amount, reference, guestId, {
-    ...basePayload,
-    mediaUrl: gifMediaUrl,
-    gifUrls: [gifMediaUrl], // if your moments table has gif_urls
-  });
-
-  // preview will be updated from createMoment()
-}
-            setSuccessMessage(
-              `${
-                selectedFormat === "still"
-                  ? "🖼️ Spotlight Poster"
-                  : "🎬 Status Trio"
-              } moment created! 🎉 ${
-                verified?.pending
-                  ? "\n⏳ Payment verification is finishing up..."
-                  : ""
-              }`
+            // 1) Render PNG on client-side canvas style
+            const stillDataUrl = await renderStillImage(
+              selectedTemplate,
+              finalMessage || userMessage,
+              senderName
             );
-            setStep(4);
-          } catch (err: any) {
-            console.error("❌ Error in onSuccess:", err);
-            setError(err.message || "Failed to create moment");
-          } finally {
-            setIsProcessing(false);
-            sessionStorage.removeItem("pendingDelivery");
-            sessionStorage.removeItem("lastPaystackReference");
-          }
-        },
 
-        onError: (err) => {
-          console.error("❌ Payment error:", err);
-          setError(err?.message || "Payment was cancelled or failed");
+            // 2) Upload to Supabase
+            const stillMediaUrl = await uploadDataUrlToSupabase(
+              stillDataUrl,
+              "still"
+            );
+
+            // 3) Persist moment
+            await createMoment("still", true, amount, reference, guestId, {
+              ...basePayload,
+              template: selectedTemplate,
+              mediaUrl: stillMediaUrl,
+            });
+          }
+
+          // GIF STATUS TRIO PATH (PAID)
+          if (selectedFormat === "gif") {
+            if (!selectedGifUrl) {
+              throw new Error("No GIF selected");
+            }
+
+            console.log("GIF path: unified card via Tenor + canvas");
+
+            // 1) Ask server to wrap the selected Tenor GIF in your card
+            const res = await fetch("/api/gif/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tenorGifUrl: selectedGifUrl,
+                receiverName: receiverName || "Someone Special",
+                message: finalMessage || userMessage,
+                senderName,
+              }),
+            });
+
+            const data = await res.json();
+            if (!res.ok || !data.gifDataUrl) {
+              console.error("GIF create API error:", data);
+              throw new Error(data.error || "Failed to create Status Trio GIF");
+            }
+
+            const gifDataUrl: string = data.gifDataUrl;
+
+            // 2) Upload the composed GIF to Supabase
+            const gifMediaUrl = await uploadDataUrlToSupabase(
+              gifDataUrl,
+              "gif"
+            );
+
+            // 3) Persist moment
+            await createMoment("gif", true, amount, reference, guestId, {
+              ...basePayload,
+              mediaUrl: gifMediaUrl,
+              gifUrls: [gifMediaUrl],
+            });
+          }
+
+          // We do NOT manually set success here – createMoment already:
+          // - sets momentId
+          // - sets shareUrl
+          // - sets mediaUrl
+          // - sets successMessage
+          // - moves to step 4
+          if (verified?.pending) {
+            setSuccessMessage((prev) =>
+              (prev || "").concat(
+                "\n⏳ Payment verification is finishing up..."
+              )
+            );
+          }
+        } catch (err: any) {
+          console.error("❌ Error in onSuccess:", err);
+          setError(err.message || "Failed to create moment");
+        } finally {
           setIsProcessing(false);
           sessionStorage.removeItem("pendingDelivery");
           sessionStorage.removeItem("lastPaystackReference");
-        },
-      });
-    } catch (err: any) {
-      console.error("❌ Payment flow error:", err);
-      setError(err.message || "Something went wrong");
-      setIsProcessing(false);
-    }
-  };
+        }
+      },
+
+      onError: (err) => {
+        console.error("❌ Payment error:", err);
+        setError(err?.message || "Payment was cancelled or failed");
+        setIsProcessing(false);
+        sessionStorage.removeItem("pendingDelivery");
+        sessionStorage.removeItem("lastPaystackReference");
+      },
+    });
+  } catch (err: any) {
+    console.error("❌ Payment flow error:", err);
+    setError(err.message || "Something went wrong");
+    setIsProcessing(false);
+  }
+};
 
   // ---------- Share / Download ----------
 
