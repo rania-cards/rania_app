@@ -129,16 +129,15 @@ export default function MomentPage() {
             </div>
           )}
 
-          {/* GIF ANIMATION */}
-          {moment.delivery_type === "gif" && moment.media_url && (
-            <div className="aspect-[9/16] w-full flex items-center justify-center">
-              <img
-                src={moment.media_url}
-                alt="Status Trio"
-                className="w-full h-full object-cover"
-              />
-            </div>
-          )}
+        {moment.delivery_type === "gif" && moment.media_url && (
+  <div className="aspect-[9/16] w-full flex items-center justify-center">
+    <img
+      src={moment.media_url}
+      alt="Status Trio"
+      className="w-full h-full object-cover"
+    />
+  </div>
+)}
 
           {/* No media fallback */}
           {!moment.media_url && (

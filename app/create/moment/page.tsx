@@ -816,15 +816,19 @@ function CreateMomentContent() {
             // CREATE MOMENT
             console.log("📝 Creating moment...");
 
-          if (selectedFormat === "gif") {
+        if (selectedFormat === "gif") {
+  if (!selectedGifUrl) {
+    throw new Error("No GIF selected");
+  }
+
   console.log("GIF path: unified card via Tenor + canvas");
 
-  // occasion / message from your state
+  // 1) Ask server to wrap the selected Tenor GIF in your card
   const res = await fetch("/api/gif/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      occasion,
+      tenorGifUrl: selectedGifUrl,                      // <— critical
       receiverName: receiverName || "Someone Special",
       message: finalMessage || userMessage,
       senderName,
@@ -839,16 +843,18 @@ function CreateMomentContent() {
 
   const gifDataUrl: string = data.gifDataUrl;
 
-  // upload unified GIF to Supabase
+  // 2) Upload the composed GIF to Supabase
   const gifMediaUrl = await uploadDataUrlToSupabase(gifDataUrl, "gif");
 
+  // 3) Persist as the moment’s media_url
   await createMoment("gif", true, amount, reference, guestId, {
     ...basePayload,
     mediaUrl: gifMediaUrl,
-    gifUrls: [gifMediaUrl], // if you store array
+    gifUrls: [gifMediaUrl], // if your moments table has gif_urls
   });
-}
 
+  // preview will be updated from createMoment()
+}
             setSuccessMessage(
               `${
                 selectedFormat === "still"
