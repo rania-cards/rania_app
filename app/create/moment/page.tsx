@@ -917,7 +917,7 @@ function CreateMomentContent() {
       },
     });
   } catch (err: any) {
-    console.error("❌ Payment flow error:", err);
+    console.error(" Payment flow error:", err);
     setError(err.message || "Something went wrong");
     setIsProcessing(false);
   }
