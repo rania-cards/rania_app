@@ -26,171 +26,146 @@ export async function renderStatusCardGif(
 ): Promise<GifRenderOutput> {
   const { tenorGifUrl, receiverName, message, senderName } = input;
 
-  try {
-    const allFrames: any[] = await gifFrames({
-      url: tenorGifUrl,
-      frames: "all",
-      outputType: "png",
+  const allFrames: any[] = await gifFrames({
+    url: tenorGifUrl,
+    frames: "all",
+    outputType: "png",
+  });
+
+  if (!allFrames || allFrames.length === 0) {
+    throw new Error("No frames decoded from Tenor GIF");
+  }
+
+  const maxFrames = 20;
+  const step = Math.max(1, Math.floor(allFrames.length / maxFrames));
+  const frames = allFrames.filter((_: any, idx: number) => idx % step === 0);
+
+  const encoder = new GIFEncoder(WIDTH, HEIGHT);
+  const canvas = createCanvas(WIDTH, HEIGHT);
+  const ctx = canvas.getContext("2d");
+
+  encoder.start();
+  encoder.setRepeat(0);
+  encoder.setDelay(85);
+  encoder.setQuality(10);
+
+  // ⭐ NEW TEAL BLUE GRADIENT BACKGROUND
+  const fixedGradient = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+  fixedGradient.addColorStop(0, "#065f46"); // deep emerald
+  fixedGradient.addColorStop(1, "#0f172a"); // navy slate
+
+  // ⭐ FIXED MESSAGE TEXT GRADIENT
+  const messageGradient = ctx.createLinearGradient(
+    WIDTH / 2 - 250,
+    800,
+    WIDTH / 2 + 250,
+    1200
+  );
+  messageGradient.addColorStop(0, "#f8fafc");
+  messageGradient.addColorStop(1, "#e2e8f0");
+
+  for (const frame of frames) {
+    const buf: Buffer = await streamToBuffer(frame.getImage());
+    const tenorFrame = await loadImage(buf);
+
+    drawFrame(ctx, tenorFrame, {
+      receiverName,
+      senderName,
+      message,
+      background: fixedGradient,
+      messageGradient,
     });
 
-    if (!allFrames || allFrames.length === 0) {
-      throw new Error("No frames decoded from Tenor GIF");
-    }
-
-    const maxFrames = 20;
-    const step = Math.max(1, Math.floor(allFrames.length / maxFrames));
-    const frames = allFrames.filter((_: any, idx: number) => idx % step === 0);
-
-    const encoder = new GIFEncoder(WIDTH, HEIGHT);
-    const canvas = createCanvas(WIDTH, HEIGHT);
-    const ctx = canvas.getContext("2d");
-
-    encoder.start();
-    encoder.setRepeat(0);
-    encoder.setDelay(80);
-    encoder.setQuality(10);
-
-    for (const frame of frames) {
-      const buf: Buffer = await streamToBuffer(frame.getImage());
-      const tenorFrame = await loadImage(buf);
-
-      drawSingleFrame(ctx, tenorFrame, {
-        receiverName,
-        senderName,
-        message,
-      });
-
-      encoder.addFrame(ctx as any);
-    }
-
-    encoder.finish();
-    const buffer: Buffer = encoder.out.getData();
-    const base64 = buffer.toString("base64");
-    const gifDataUrl = `data:image/gif;base64,${base64}`;
-
-    return { gifDataUrl };
-  } catch (err: any) {
-    console.error("❌ GIF render error:", err?.message || err);
-    throw new Error(err?.message || "Failed to render GIF");
+    encoder.addFrame(ctx as any);
   }
+
+  encoder.finish();
+  const buffer: Buffer = encoder.out.getData();
+
+  return {
+    gifDataUrl: `data:image/gif;base64,${buffer.toString("base64")}`,
+  };
 }
 
-// ======================================================================
-// ⭐ FRAME DRAWING
-// ======================================================================
-
-type FrameMeta = {
-  receiverName: string;
-  senderName?: string;
-  message: string;
-};
-
-function drawSingleFrame(
+// ======================================================
+// DRAW FRAME (UPDATED WITH MEDIUM GIF)
+// ======================================================
+function drawFrame(
   ctx: CanvasRenderingContext2D,
   tenorFrame: any,
-  meta: FrameMeta
+  meta: any
 ) {
-  const { receiverName, senderName, message } = meta;
+  const { receiverName, senderName, message, background, messageGradient } = meta;
 
   ctx.clearRect(0, 0, WIDTH, HEIGHT);
 
-  // 🔥 Smooth gradient background
-  const bg = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
-  bg.addColorStop(0, "#0f0f1a");
-  bg.addColorStop(1, "#050510");
-  ctx.fillStyle = bg;
+  // Background
+  ctx.fillStyle = background;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  // ⭐ Draw GIF
-  const gifW = WIDTH * 0.55;
-  const aspect = tenorFrame.width / tenorFrame.height;
-  const gifH = gifW / aspect;
-
+  // ======================================================
+  // ⭐ GIF — MEDIUM SIZE (NO MORE CUTTING, FIXED)
+  // ======================================================
+  const maxGifHeight = HEIGHT * 0.33; // 33% height → nice medium
+  const scale = maxGifHeight / tenorFrame.height;
+  const gifW = tenorFrame.width * scale;
+  const gifH = maxGifHeight;
   const gifX = (WIDTH - gifW) / 2;
-  const gifY = 180;
+  const gifY = 110;
 
   ctx.drawImage(tenorFrame, gifX, gifY, gifW, gifH);
 
-  // ======================================================================
-  // ⭐ MAIN MESSAGE (BOLD, THICK, GLOW)
-  // ======================================================================
-
+  // ======================================================
+  // ⭐ MESSAGE TEXT BELOW GIF
+  // ======================================================
   ctx.textAlign = "center";
-  ctx.fillStyle = "#e0f2fe";
-  ctx.font =
-    '800 58px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.font = '900 58px "Segoe UI", sans-serif';
+  ctx.fillStyle = messageGradient;
 
-  const maxWidth = WIDTH * 0.75;
-  const lines = wrapLines(ctx, `"${message}"`, maxWidth);
-  let y = gifY + gifH + 120;
+  const maxWidth = WIDTH * 0.8;
+  const lines = wrapLines(ctx, message, maxWidth);
 
-  ctx.shadowColor = "rgba(0,0,0,0.3)";
-  ctx.shadowBlur = 12;
+  let y = gifY + gifH + 140;
 
   for (const line of lines) {
-    drawBoldText(ctx, line, WIDTH / 2, y);
+    ctx.fillText(line, WIDTH / 2, y);
     y += 70;
   }
 
-  ctx.shadowBlur = 0;
-
-  // ======================================================================
-  // ⭐ RECEIVER — "For"
-  // ======================================================================
-  y += 40;
-
+  // ======================================================
+  // ⭐ "For"
+  // ======================================================
+  y += 50;
   ctx.textAlign = "left";
 
-  ctx.fillStyle = "#94a3b8";
-  ctx.font = '700 32px system-ui';
-  drawBoldText(ctx, "For", 120, y);
+  ctx.font = "700 32px system-ui";
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillText("For", 120, y);
 
-  ctx.fillStyle = "#4ade80";
-  ctx.font = '900 46px system-ui';
-  drawBoldText(ctx, receiverName || "Someone Special", 120, y + 60);
+  ctx.font = "900 46px system-ui";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText(receiverName || "Someone", 120, y + 50);
 
-  // ======================================================================
-  // ⭐ SENDER — "From"
-  // ======================================================================
   if (senderName) {
-    y += 150;
+    y += 140;
+    ctx.font = "700 32px system-ui";
+    ctx.fillStyle = "#e2e8f0";
+    ctx.fillText("From", 120, y);
 
-    ctx.fillStyle = "#94a3b8";
-    ctx.font = '700 32px system-ui';
-    drawBoldText(ctx, "From", 120, y);
-
-    ctx.fillStyle = "#f1f5f9";
-    ctx.font = '900 44px system-ui';
-    drawBoldText(ctx, senderName, 120, y + 60);
+    ctx.font = "900 46px system-ui";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(senderName, 120, y + 50);
   }
 }
 
-// ======================================================================
-// ⭐ HELPERS
-// ======================================================================
-
-// Makes text THICK + glowing like preview
-function drawBoldText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number
-) {
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
-  ctx.strokeText(text, x, y);
-
-  ctx.fillText(text, x, y);
-
-  ctx.shadowColor = "rgba(255,255,255,0.23)";
-  ctx.shadowBlur = 18;
-}
-
+// ======================================================
+// HELPERS
+// ======================================================
 function wrapLines(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number
-): string[] {
+) {
   const words = text.split(" ");
   const lines: string[] = [];
   let line = "";
@@ -204,8 +179,8 @@ function wrapLines(
       line = test;
     }
   }
-  if (line) lines.push(line);
 
+  if (line) lines.push(line);
   return lines;
 }
 
