@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+//  gif/create/route
 import { renderStatusCardGif } from "@/lib/renderGif";
 import { NextRequest, NextResponse } from "next/server";
 

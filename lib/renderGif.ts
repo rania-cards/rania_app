@@ -39,7 +39,6 @@ export async function renderStatusCardGif(
   const maxFrames = 20;
   const step = Math.max(1, Math.floor(allFrames.length / maxFrames));
   const frames = allFrames.filter((_: any, idx: number) => idx % step === 0);
-
   const encoder = new GIFEncoder(WIDTH, HEIGHT);
   const canvas = createCanvas(WIDTH, HEIGHT);
   const ctx = canvas.getContext("2d");
